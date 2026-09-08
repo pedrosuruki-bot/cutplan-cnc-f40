@@ -57,6 +57,7 @@ function drawPieceDimensions(
     Math.max(1.5, h - pad * 2),
     Math.max(4.8, Math.min(8, sideBand * 1.15)),
     1.8,
+    
   );
   doc.setFontSize(heightPt);
   doc.text(heightText, x + pad + heightPt * 0.35, y + h / 2, {
@@ -68,28 +69,44 @@ function drawPieceDimensions(
 function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 12;
-  const left = 12;
-  const top = 25;
-  const right = 24;
-  const bottom = 23;
-  const areaW = pageW - left - right;
+  const marginX = 12;
+  const top = 27;
+  const bottom = 25;
+  const right = 18;
+  const areaW = pageW - marginX * 2 - right;
   const areaH = pageH - top - bottom;
-  const sheetW = layout.length;
-  const sheetH = layout.width;
+
+  // A chapa é apresentada como na referência: 2100 mm na horizontal e
+  // 2840 mm na vertical. Quando o layout original é mais comprido que largo,
+  // rodamos a representação 90° sem alterar a geometria real das peças.
+  const vertical = layout.length >= layout.width;
+  const sheetW = vertical ? layout.width : layout.length;
+  const sheetH = vertical ? layout.length : layout.width;
   const scale = Math.min(areaW / sheetW, areaH / sheetH);
   const drawW = sheetW * scale;
   const drawH = sheetH * scale;
-  const ox = left;
+  const ox = marginX + (areaW - drawW) / 2;
   const oy = top + (areaH - drawH) / 2;
+
+  const mapRect = (x: number, y: number, w: number, h: number) =>
+    vertical
+      ? { x: layout.width - (y + h), y: x, w: h, h: w }
+      : { x, y, w, h };
 
   doc.setTextColor(25, 25, 25);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text(`Chapa ${layout.index} — ${layout.material}`, margin, 10);
+  doc.setFontSize(14);
+  doc.text(`Chapa ${layout.index} — ${layout.material}`, marginX, 10);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
-  doc.text(`Dimensão: ${layout.length} × ${layout.width} × ${layout.thickness} mm`, margin, 16);
+  doc.text(
+    `Dimensão: ${layout.length} × ${layout.width} × ${layout.thickness} mm`,
+    marginX,
+    16,
+  );
+  doc.setFontSize(7);
+  doc.setTextColor(90, 90, 90);
+  doc.text("Desenho de corte · medidas das peças em mm", marginX, 21);
 
   doc.setFillColor(248, 248, 248);
   doc.setDrawColor(70, 70, 70);
@@ -97,29 +114,24 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   doc.rect(ox, oy, drawW, drawH, "FD");
 
   for (const o of layout.offcuts) {
-    const x = ox + o.x * scale;
-    const y = oy + o.y * scale;
-    const w = o.w * scale;
-    const h = o.h * scale;
+    const r = mapRect(o.x, o.y, o.w, o.h);
+    const x = ox + r.x * scale;
+    const y = oy + r.y * scale;
+    const w = r.w * scale;
+    const h = r.h * scale;
+
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(165, 165, 165);
     doc.setLineWidth(0.18);
     doc.rect(x, y, w, h, "FD");
-    if (w > 28 && h > 12) {
-      doc.setTextColor(95, 95, 95);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.5);
-      doc.text(`${Math.round(o.w)} × ${Math.round(o.h)}`, x + w / 2, y + h / 2 + 2, {
-        align: "center",
-      });
-    }
   }
 
   for (const p of layout.placements) {
-    const x = ox + p.x * scale;
-    const y = oy + p.y * scale;
-    const w = p.w * scale;
-    const h = p.h * scale;
+    const r = mapRect(p.x, p.y, p.w, p.h);
+    const x = ox + r.x * scale;
+    const y = oy + r.y * scale;
+    const w = r.w * scale;
+    const h = r.h * scale;
     const c = rgbForPart(p.partId);
 
     doc.setFillColor(c[0], c[1], c[2]);
@@ -127,14 +139,17 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     doc.setLineWidth(0.22);
     doc.rect(x, y, w, h, "FD");
 
-    drawPieceDimensions(doc, x, y, w, h, p.w, p.h);
+    // As cotas seguem a orientação visual da peça, tal como no relatório:
+    // largura em cima e altura na lateral esquerda, sem o antigo "W × H" central.
+    drawPieceDimensions(doc, x, y, w, h, r.w, r.h);
 
     if (showPartIds) {
       const idSize = Math.max(4.2, Math.min(7.5, Math.min(w / 17, h / 8)));
-      const minW = doc.getTextWidth(p.partId);
-      if (w > minW + 4 && h > 14) {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(idSize);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(idSize);
+      const idWidth = doc.getTextWidth(p.partId);
+
+      if (w > idWidth + 4 && h > 14) {
         doc.setTextColor(25, 25, 25);
         doc.text(p.partId, x + w / 2, y + h * 0.56, { align: "center" });
       }
@@ -152,13 +167,13 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   doc.line(ox + drawW, yDim - 2, ox + drawW, yDim + 2);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text(`${Math.round(layout.length)} mm`, ox + drawW / 2, yDim + 5, { align: "center" });
+  doc.text(`${Math.round(sheetW)} mm`, ox + drawW / 2, yDim + 5, { align: "center" });
 
-  const xDim = Math.min(pageW - 12, ox + drawW + 10);
+  const xDim = ox + drawW + 8;
   doc.line(xDim, oy, xDim, oy + drawH);
   doc.line(xDim - 2, oy, xDim + 2, oy);
   doc.line(xDim - 2, oy + drawH, xDim + 2, oy + drawH);
-  doc.text(`${Math.round(layout.width)} mm`, xDim + 3.5, oy + drawH / 2 + 3, {
+  doc.text(`${Math.round(sheetH)} mm`, xDim + 3.5, oy + drawH / 2 + 3, {
     align: "center",
     angle: 90,
   });
@@ -174,9 +189,9 @@ export function exportSheetDrawingPdf(
 ): void {
   if (!result.layouts.length) return;
 
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   result.layouts.forEach((layout, index) => {
-    if (index > 0) doc.addPage("a4", "landscape");
+    if (index > 0) doc.addPage("a4", "portrait");
     drawSheet(doc, layout, showPartIds);
   });
   doc.save(`${slug(project)}-desenho-chapas.pdf`);
