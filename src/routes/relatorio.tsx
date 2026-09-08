@@ -89,8 +89,8 @@ function ReportPage() {
 
       <Panel title="Parâmetros de corte">
         <p className="text-sm text-muted-foreground">
-          Lâmina {project.parameters.kerf} mm · Margem {project.parameters.margin} mm · Espaçamento{" "}
-          {project.parameters.spacing} mm · Rotação{" "}
+          Lâmina {project.parameters.kerf} mm · Margem {project.parameters.margin} mm · Espaçamento {" "}
+          {project.parameters.spacing} mm · Rotação {" "}
           {project.parameters.allowRotation ? "sim" : "não"} · Modo {project.parameters.mode}
         </p>
       </Panel>
