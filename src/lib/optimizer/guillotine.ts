@@ -68,8 +68,7 @@ export class GuillotineBin {
 
     const rightW = node.w - best.w - gap;
     const bottomH = node.h - best.h - gap;
-    // Splitting from the top-left creates a true guillotine tree:
-    // one vertical and one horizontal child can be cut independently.
+    // Keep the separation gap between the lower-left child and the right child.
     if (rightW > 1e-6) {
       this.free.push({
         id: this.nextId++,
@@ -89,7 +88,7 @@ export class GuillotineBin {
       });
     }
     if (bottomH > 1e-6) {
-      const leftW = rightW > 1e-6 ? best.w + gap : node.w;
+      const leftW = rightW > 1e-6 ? best.w : node.w;
       this.free.push({
         id: this.nextId++,
         x: node.x,
