@@ -21,12 +21,11 @@ function fitDimensionFont(
   maxWidthMm: number,
   maxHeightMm: number,
   maxPt = 8,
-  minPt = 2.6,
+  minPt = 2.2,
 ): number {
   doc.setFont("helvetica", "bold");
-
-  const safeWidth = Math.max(1, maxWidthMm);
-  const safeHeight = Math.max(1, maxHeightMm);
+  const safeWidth = Math.max(0.8, maxWidthMm);
+  const safeHeight = Math.max(0.8, maxHeightMm);
   let size = Math.min(maxPt, safeHeight / 0.36);
 
   while (size > minPt) {
@@ -35,7 +34,6 @@ function fitDimensionFont(
     size -= 0.2;
   }
 
-  doc.setFontSize(minPt);
   return minPt;
 }
 
@@ -43,44 +41,46 @@ function drawPieceDimensions(
   doc: jsPDF,
   x: number,
   y: number,
-  w: number,
-  h: number,
+  renderedW: number,
+  renderedH: number,
+  actualW: number,
+  actualH: number,
 ): void {
-  // Exact workshop-style coting:
-  // - width is horizontal near the top edge;
-  // - height is vertical near the left edge;
-  // - both are ALWAYS present and use the displayed rectangle dimensions.
-  const pad = Math.max(0.7, Math.min(1.4, Math.min(w, h) * 0.035));
-  const widthText = `${Math.round(w)}`;
-  const heightText = `${Math.round(h)}`;
-  const centerX = x + w / 2;
-  const centerY = y + h / 2;
+  // The rectangle is rendered in PDF millimetres, while actualW/actualH are
+  // the real workshop dimensions. Never use rendered dimensions as labels.
+  // The horizontal dimension goes inside the top edge and the vertical
+  // dimension goes inside the left edge, matching the workshop reference.
+  const pad = Math.max(0.7, Math.min(1.5, Math.min(renderedW, renderedH) * 0.035));
+  const widthText = `${Math.round(actualW)}`;
+  const heightText = `${Math.round(actualH)}`;
+  const centerX = x + renderedW / 2;
+  const centerY = y + renderedH / 2;
 
   doc.setTextColor(20, 20, 20);
   doc.setFont("helvetica", "bold");
 
-  // Horizontal dimension. Keep it inside the top strip of the part.
+  // Width: horizontal and inside the piece, close to the top edge.
   const horizontalPt = fitDimensionFont(
     doc,
     widthText,
-    Math.max(1.2, w - pad * 2),
-    Math.max(1.2, Math.min(4.5, h * 0.22)),
+    Math.max(0.8, renderedW - pad * 2),
+    Math.max(0.8, Math.min(4.5, renderedH * 0.22)),
     8,
-    2.6,
+    1.8,
   );
   doc.setFontSize(horizontalPt);
   doc.text(widthText, centerX, y + pad + horizontalPt * 0.3528, {
     align: "center",
   });
 
-  // Vertical dimension. Rotate it 90° and keep it inside the left strip.
+  // Height: vertical and inside the piece, close to the left edge.
   const verticalPt = fitDimensionFont(
     doc,
     heightText,
-    Math.max(1.2, h - pad * 2),
-    Math.max(1.2, Math.min(4.5, w * 0.22)),
+    Math.max(0.8, renderedH - pad * 2),
+    Math.max(0.8, Math.min(4.5, renderedW * 0.22)),
     8,
-    2.6,
+    1.8,
   );
   doc.setFontSize(verticalPt);
   doc.text(heightText, x + pad + verticalPt * 0.3528, centerY, {
@@ -197,22 +197,22 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     const r = mapRect(p.x, p.y, p.w, p.h);
     const x = ox + r.x * scale;
     const y = oy + r.y * scale;
-    const w = r.w * scale;
-    const h = r.h * scale;
+    const renderedW = r.w * scale;
+    const renderedH = r.h * scale;
     const c = rgbForPart(p.partId);
     doc.setFillColor(c[0], c[1], c[2]);
     doc.setDrawColor(80, 80, 80);
     doc.setLineWidth(0.22);
-    doc.rect(x, y, w, h, "FD");
+    doc.rect(x, y, renderedW, renderedH, "FD");
 
-    drawPieceDimensions(doc, x, y, w, h);
+    drawPieceDimensions(doc, x, y, renderedW, renderedH, r.w, r.h);
 
-    if (showPartIds && w > 25 && h > 18) {
-      const idSize = Math.max(4.2, Math.min(6.5, Math.min(w / 18, h / 8)));
+    if (showPartIds && renderedW > 25 && renderedH > 18) {
+      const idSize = Math.max(4.2, Math.min(6.5, Math.min(renderedW / 18, renderedH / 8)));
       doc.setFont("helvetica", "normal");
       doc.setFontSize(idSize);
       doc.setTextColor(35, 35, 35);
-      doc.text(p.partId, x + w / 2, y + h - idSize * 0.45, { align: "center" });
+      doc.text(p.partId, x + renderedW / 2, y + renderedH - idSize * 0.45, { align: "center" });
     }
   }
 
