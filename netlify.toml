@@ -1,3 +1,6 @@
 [build]
   command = "bun run build"
   publish = ".output/public"
+
+[build.environment]
+  NODE_VERSION = "22.12.0"
