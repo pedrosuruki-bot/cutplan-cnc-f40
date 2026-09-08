@@ -1,14 +1,17 @@
+/* prettier-ignore-file */
+
 import { jsPDF } from "jspdf";
 import type { OptimizationResult, Project, SheetLayout } from "@/types";
 import { rgbForPart } from "@/lib/plan-colors";
 
 function slug(project: Project): string {
-  return project.name
+  const value = project.name
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
-    .toLowerCase() || "plano-corte";
+    .toLowerCase();
+  return value || "plano-corte";
 }
 
 function drawSheet(doc: jsPDF, layout: SheetLayout): void {
@@ -30,9 +33,7 @@ function drawSheet(doc: jsPDF, layout: SheetLayout): void {
   const oy = top + (areaH - drawH) / 2;
 
   const mapRect = (x: number, y: number, w: number, h: number) =>
-    horizontal
-      ? { x, y, w, h }
-      : { x: layout.width - (y + h), y: x, w: h, h: w };
+    horizontal ? { x, y, w, h } : { x: layout.width - (y + h), y: x, w: h, h: w };
 
   doc.setFillColor(248, 248, 248);
   doc.setDrawColor(40, 40, 40);
@@ -118,156 +119,254 @@ export function exportSheetDrawingPdf(project: Project, result: OptimizationResu
   doc.save(`${slug(project)}-desenho-chapas.pdf`);
 }
 
-export function exportProjectDetailsPdf(project: Project, result: OptimizationResult): void {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+function frame(doc: jsPDF, project: Project, page: number, total: number): void {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const footer = (page: number) => {
-    doc.setDrawColor(190, 190, 190);
-    doc.setLineWidth(0.2);
-    doc.line(12, pageH - 12, pageW - 12, pageH - 12);
-    doc.setTextColor(100, 100, 100);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.text(`CutPlan CNC · ${project.name}`, 12, pageH - 7);
-    doc.text(`Página ${page}`, pageW - 12, pageH - 7, { align: "right" });
-  };
-  const title = (text: string) => {
-    doc.setTextColor(25, 25, 25);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text(text, 12, 18);
-  };
-  const section = (text: string, y: number) => {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(25, 25, 25);
-    doc.text(text, 12, y);
-    return y + 7;
-  };
-
-  title("Detalhes do projeto");
-  doc.setFont("helvetica", "normal");
+  doc.setTextColor(40);
   doc.setFontSize(10);
-  doc.text(`Projeto: ${project.name}`, 12, 27);
-  doc.text(`Cliente: ${project.client || "Sem cliente"}`, 12, 33);
-  doc.text(`Data: ${project.date}`, 12, 39);
-  doc.text(`Observações: ${project.notes || "—"}`, 12, 45);
+  doc.text(`CutPlan CNC — ${project.name}`, 12, 11);
+  doc.setDrawColor(60);
+  doc.setLineWidth(0.3);
+  doc.line(12, 13.5, pageW - 12, 13.5);
+  doc.line(12, pageH - 12, pageW - 12, pageH - 12);
+  doc.setFontSize(7);
+  doc.setTextColor(110);
+  doc.text(total > 0 ? `página ${page}/${total}` : `página ${page}`, pageW - 12, pageH - 8, { align: "right" });
+  doc.setTextColor(40);
+}
 
-  let y = section("Resultado da otimização", 56);
-  const stats = [
-    ["Chapas utilizadas", `${result.stats.sheetsUsed}`],
-    ["Peças colocadas", `${result.stats.partsPlaced}/${result.stats.partsTotal}`],
-    ["Aproveitamento", `${result.stats.usagePct.toFixed(1)}%`],
-    ["Desperdício", `${result.stats.wastePct.toFixed(1)}%`],
-    ["Cortes estimados", `${result.stats.totalCuts}`],
-    ["Comprimento de corte", `${(result.stats.totalCutLength / 1000).toFixed(2)} m`],
-    ["Custo material", `${result.stats.totalCost.toFixed(2)} €`],
-    ["Custo de corte", `${result.stats.cuttingCost.toFixed(2)} €`],
-    ["Custo líquido estimado", `${result.stats.estimatedNetCost.toFixed(2)} €`],
+function sheetPage(doc: jsPDF, project: Project, layout: SheetLayout, cost: number): void {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const sx = 12;
+  let sy = 22;
+  const cutLength = layout.cuts.reduce((s, c) => s + Math.abs(c.to - c.from), 0);
+  const offcutAreaRaw = layout.offcuts.reduce((s, o) => s + o.w * o.h, 0);
+  const wasteArea = Math.max(0, layout.sheetArea - layout.usedArea);
+  const offcutArea = Math.min(offcutAreaRaw, wasteArea);
+  const rows: [string, string][] = [
+    ["Painel de stock", `${layout.length}×${layout.width}×${layout.thickness}`],
+    ["Área utilizada", `${(layout.usedArea / 1e6).toFixed(2)} m²  ${layout.usagePct.toFixed(1)}%`],
+    ["Desperdício total", `${(wasteArea / 1e6).toFixed(2)} m²  ${((wasteArea / layout.sheetArea) * 100).toFixed(1)}%`],
+    ["Sobras aproveitáveis", `${(offcutArea / 1e6).toFixed(2)} m²  ${((offcutArea / layout.sheetArea) * 100).toFixed(1)}%`],
+    ["Cortes", `${layout.cuts.length}`],
+    ["Comprimento de corte", `${(cutLength / 1000).toFixed(2)} m`],
+    ["Lâmina / margem", `${project.parameters.kerf} / ${project.parameters.margin} mm`],
+    ["Painéis", `${layout.placements.length}`],
+    ["N.º de sobras", `${layout.offcuts.length}`],
+    ["Custo material", `${cost.toFixed(2)} EUR`],
+    ["Método de corte", layout.cutMethod === "altendorf-f40" ? "Altendorf F40 — faixas + esquadro" : layout.cutMethod === "guillotine" ? "Guilhotina" : "Heurístico"],
+    ["Plano manual", layout.manual ? "Sim" : "Não"],
   ];
-  for (const [label, value] of stats) {
+  doc.setFontSize(7.5);
+  for (const [label, value] of rows) {
+    doc.setFont("helvetica", "bold");
+    doc.text(label, sx, sy);
+    doc.setFont("helvetica", "normal");
+    doc.text(value, sx + 32, sy);
+    sy += 4.4;
+  }
+  sy += 4;
+  const counts = new Map<string, { n: number; color: [number, number, number] }>();
+  for (const p of layout.placements) {
+    const key = `${Math.round(p.w)}×${Math.round(p.h)}`;
+    const entry = counts.get(key);
+    if (entry) entry.n += 1;
+    else counts.set(key, { n: 1, color: rgbForPart(p.partId) });
+  }
+  doc.setFillColor(225, 225, 225);
+  doc.rect(sx, sy - 3.2, 48, 4.6, "F");
+  doc.setFont("helvetica", "bold");
+  doc.text("Painel", sx + 1, sy);
+  doc.text("Qtd", sx + 38, sy);
+  doc.setFont("helvetica", "normal");
+  sy += 4.6;
+  for (const [key, { n, color }] of counts) {
+    if (sy > pageH - 16) break;
+    doc.setFillColor(color[0], color[1], color[2]);
+    doc.rect(sx + 0.5, sy - 2.4, 2.4, 2.4, "F");
+    doc.text(key, sx + 4.5, sy);
+    doc.text(String(n), sx + 38, sy);
+    doc.setDrawColor(225);
+    doc.setLineWidth(0.1);
+    doc.line(sx, sy + 1.2, sx + 48, sy + 1.2);
+    sy += 4.2;
+  }
+  const areaX = 68;
+  const areaY = 22;
+  const areaW = pageW - areaX - 26;
+  const areaH = pageH - areaY - 20;
+  const scale = Math.min(areaW / layout.length, areaH / layout.width);
+  const drawW = layout.length * scale;
+  const drawH = layout.width * scale;
+  const ox = areaX;
+  const oy = areaY;
+  doc.setFillColor(248, 248, 248);
+  doc.setDrawColor(120);
+  doc.setLineWidth(0.3);
+  doc.rect(ox, oy, drawW, drawH, "FD");
+  for (const o of layout.offcuts) {
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(200);
+    doc.setLineWidth(0.15);
+    doc.rect(ox + o.x * scale, oy + o.y * scale, o.w * scale, o.h * scale, "FD");
+  }
+  for (const p of layout.placements) {
+    const x = ox + p.x * scale;
+    const y = oy + p.y * scale;
+    const w = p.w * scale;
+    const h = p.h * scale;
+    const c = rgbForPart(p.partId);
+    doc.setFillColor(c[0], c[1], c[2]);
+    doc.setDrawColor(110);
+    doc.setLineWidth(0.15);
+    doc.rect(x, y, w, h, "FD");
+    const wTxt = String(Math.round(p.w));
+    const hTxt = String(Math.round(p.h));
+    const centerTxt = `${wTxt} × ${hTxt}`;
+    doc.setTextColor(20);
+    doc.setFont("helvetica", "bold");
+    const fitCenter = Math.min(13, (w - 3) / (centerTxt.length * 0.55), (h - 3) / 1.6);
+    if (fitCenter >= 5.5) {
+      doc.setFontSize(fitCenter);
+      doc.text(centerTxt, x + w / 2, y + h / 2 + fitCenter * 0.35, { align: "center" });
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(70);
+    if (w > 40 && h > 26 && fitCenter >= 5.5) {
+      doc.setFontSize(6.8);
+      doc.text(wTxt, x + w / 2, y + 5, { align: "center" });
+      doc.text(hTxt, x + 5, y + h / 2, { align: "center", angle: 90 });
+    }
+    doc.setTextColor(40);
+  }
+  doc.setDrawColor(214, 78, 78);
+  doc.setTextColor(214, 78, 78);
+  doc.setLineWidth(0.3);
+  const cx = ox + drawW + 6;
+  doc.line(cx, oy, cx, oy + drawH);
+  doc.line(cx - 1.2, oy, cx + 1.2, oy);
+  doc.line(cx - 1.2, oy + drawH, cx + 1.2, oy + drawH);
+  doc.setFontSize(9);
+  doc.text(String(layout.width), cx + 3.4, oy + drawH / 2, { align: "center", angle: 90 });
+  const cy = oy + drawH + 6;
+  doc.line(ox, cy, ox + drawW, cy);
+  doc.line(ox, cy - 1.2, ox, cy + 1.2);
+  doc.line(ox + drawW, cy - 1.2, ox + drawW, cy + 1.2);
+  doc.text(String(layout.length), ox + drawW / 2, cy + 3.4, { align: "center" });
+  doc.setTextColor(40);
+  doc.setDrawColor(60);
+  doc.setFontSize(9);
+  doc.text(`Chapa ${layout.index} — ${layout.material} ${layout.length}×${layout.width}×${layout.thickness} mm · ${project.parameters.kerf} mm de lâmina`, areaX, 18);
+}
+
+function cutListPage(doc: jsPDF, project: Project, result: OptimizationResult, startIndex: number): number {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const rows = result.layouts.flatMap((layout) => layout.placements.map((p) => ({ layout, p })));
+  let i = startIndex;
+  frame(doc, project, doc.getNumberOfPages(), 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(17);
+  doc.text("LISTA DE CORTE — OFICINA", 12, 25);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${project.name} · ${project.client || "Sem cliente"} · ${project.date}`, 12, 31);
+  doc.text(`Máquina: Altendorf F40 · Kerf: ${project.parameters.kerf} mm · Margem: ${project.parameters.margin} mm · Espaçamento: ${project.parameters.spacing} mm`, 12, 36);
+  const cols = [12, 23, 34, 48, 65, 112, 140, 158, 172, 205, 238];
+  const headers = ["OK", "#", "Ch", "ID", "Peça", "Compr.", "Larg.", "Rot.", "Material", "Fita", "Observações"];
+  let y = 44;
+  const rowH = 7;
+  const drawHeader = () => {
+    doc.setFillColor(35, 35, 35);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(10, y - 5, pageW - 20, 7, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.2);
+    headers.forEach((h, idx) => doc.text(h, cols[idx]!, y));
+    y += rowH;
+    doc.setTextColor(30, 30, 30);
+    doc.setFont("helvetica", "normal");
+  };
+  drawHeader();
+  while (i < rows.length) {
+    if (y > pageH - 18) {
+      doc.addPage("a4", "portrait");
+      frame(doc, project, doc.getNumberOfPages(), 0);
+      y = 20;
+      drawHeader();
+    }
+    const { layout, p } = rows[i]!;
+    const part = project.parts.find((x) => x.id === p.partId);
+    const values = ["[ ]", String(i + 1), String(layout.index), p.partId, p.name.slice(0, 28), String(Math.round(p.w)), String(Math.round(p.h)), p.rotated ? "90°" : "0°", (part?.material ?? layout.material).slice(0, 25), (part?.edgeBanding || "—").slice(0, 16), (part?.notes || "").slice(0, 28)];
+    if (i % 2 === 0) {
+      doc.setFillColor(245, 245, 245);
+      doc.rect(10, y - 5, pageW - 20, rowH, "F");
+    }
+    doc.setFontSize(7.2);
+    values.forEach((v, idx) => doc.text(v, cols[idx]!, y));
+    doc.setDrawColor(220);
+    doc.line(10, y + 2, pageW - 10, y + 2);
+    y += rowH;
+    i++;
+  }
+  if (result.unplaced.length) {
+    if (y > pageH - 45) {
+      doc.addPage("a4", "portrait");
+      frame(doc, project, doc.getNumberOfPages(), 0);
+      y = 20;
+    }
+    y += 4;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text(label, 14, y);
-    doc.setFont("helvetica", "normal");
-    doc.text(value, 72, y);
-    y += 5;
-  }
-
-  y += 5;
-  y = section("Parâmetros de corte", y);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`Lâmina / kerf: ${project.parameters.kerf} mm`, 14, y);
-  doc.text(`Margem: ${project.parameters.margin} mm`, 90, y);
-  y += 5;
-  doc.text(`Espaçamento: ${project.parameters.spacing} mm`, 14, y);
-  doc.text(`Rotação: ${project.parameters.allowRotation ? "Sim" : "Não"}`, 90, y);
-  y += 5;
-  doc.text(`Modo: ${project.parameters.mode}`, 14, y);
-  doc.text(`Serra: ${project.parameters.sawMode}`, 90, y);
-  footer(1);
-
-  doc.addPage("a4", "portrait");
-  title("Lista de peças");
-  y = 28;
-  doc.setFillColor(35, 35, 35);
-  doc.setTextColor(255, 255, 255);
-  doc.rect(10, y - 5, pageW - 20, 7, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  ["ID", "Peça", "Medidas", "Qtd", "Material", "Fita"].forEach((v, i) => doc.text(v, [12, 32, 105, 130, 145, 190][i]!, y));
-  y += 7;
-  doc.setTextColor(30, 30, 30);
-  doc.setFont("helvetica", "normal");
-  for (const p of project.parts) {
-    if (y > pageH - 20) {
-      footer(doc.getNumberOfPages());
-      doc.addPage("a4", "portrait");
-      title("Lista de peças — continuação");
-      y = 28;
-    }
-    doc.setFontSize(8);
-    const vals = [p.id, p.name.slice(0, 28), `${p.length} × ${p.width}`, String(p.quantity), p.material.slice(0, 20), p.edgeBanding || "—"];
-    vals.forEach((v, i) => doc.text(v, [12, 32, 105, 130, 145, 190][i]!, y));
+    doc.text("PEÇAS NÃO ACOMODADAS", 12, y);
     y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    for (const u of result.unplaced) {
+      doc.text(`${u.partId} · ${u.name} · ${u.length}×${u.width} mm ×${u.quantity} · ${u.reason}`, 14, y);
+      y += 5;
+    }
   }
-  footer(doc.getNumberOfPages());
+  return i;
+}
 
+function operationPages(doc: jsPDF, project: Project, result: OptimizationResult): void {
   for (const layout of result.layouts) {
     doc.addPage("a4", "portrait");
-    title(`Chapa ${layout.index} — detalhes`);
+    frame(doc, project, doc.getNumberOfPages(), 0);
+    const pageW = doc.internal.pageSize.getWidth();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(`OPERAÇÕES — CHAPA ${layout.index}`, 12, 22);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(`Material: ${layout.material}`, 12, 28);
-    doc.text(`Dimensão: ${layout.length} × ${layout.width} × ${layout.thickness} mm`, 12, 34);
-    doc.text(`Aproveitamento: ${layout.usagePct.toFixed(1)}% · Peças: ${layout.placements.length} · Cortes: ${layout.cuts.length}`, 12, 40);
-    y = section("Posicionamentos", 52);
     doc.setFontSize(8);
-    for (const p of layout.placements) {
-      if (y > pageH - 30) {
-        footer(doc.getNumberOfPages());
-        doc.addPage("a4", "portrait");
-        title(`Chapa ${layout.index} — posicionamentos`);
-        y = 28;
-      }
-      doc.text(`${p.partId} · ${p.name} · X ${Math.round(p.x)} · Y ${Math.round(p.y)} · ${Math.round(p.w)} × ${Math.round(p.h)} mm · ${p.rotated ? "90°" : "0°"}`, 14, y);
-      y += 5;
-    }
-    y += 4;
-    y = section("Operações de corte", y);
-    doc.setFontSize(8);
+    doc.text(`${layout.material} · ${layout.length}×${layout.width}×${layout.thickness} mm`, 12, 29);
+    doc.setFontSize(7.5);
+    let y = 38;
     for (const c of layout.cuts) {
-      if (y > pageH - 25) {
-        footer(doc.getNumberOfPages());
+      if (y > pageH - 18) {
         doc.addPage("a4", "portrait");
-        title(`Chapa ${layout.index} — operações`);
-        y = 28;
+        frame(doc, project, doc.getNumberOfPages(), 0);
+        y = 20;
       }
-      doc.text(`${c.order}. ${c.phase || ""} · ${c.type} · posição ${c.position} mm · ${c.note}`, 14, y);
-      y += 5;
-    }
-    y += 4;
-    y = section("Sobras", y);
-    doc.setFontSize(8);
-    if (!layout.offcuts.length) doc.text("Nenhuma sobra registada.", 14, y);
-    else for (const o of layout.offcuts) { doc.text(`${Math.round(o.w)} × ${Math.round(o.h)} mm · X ${Math.round(o.x)} · Y ${Math.round(o.y)}`, 14, y); y += 5; }
-    footer(doc.getNumberOfPages());
-  }
-
-  if (result.unplaced.length) {
-    doc.addPage("a4", "portrait");
-    title("Peças não acomodadas");
-    y = 30;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    for (const u of result.unplaced) {
-      doc.text(`${u.partId} · ${u.name} ×${u.quantity} · ${u.length} × ${u.width} mm · ${u.reason}`, 14, y);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Fase ${c.order}`, 12, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${c.phase || ""} · ${c.type} · posição ${c.position} mm · ${c.note}`, 32, y);
       y += 6;
     }
-    footer(doc.getNumberOfPages());
   }
+}
 
-  doc.save(`${slug(project)}-detalhes-projeto.pdf`);
+export function exportProjectPdf(project: Project, result: OptimizationResult): void {
+  if (!result.layouts.length) return;
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  result.layouts.forEach((layout, index) => {
+    if (index > 0) doc.addPage("a4", "landscape");
+    sheetPage(doc, project, layout, result.stats.totalCost);
+  });
+  cutListPage(doc, project, result, 0);
+  operationPages(doc, project, result);
+  doc.save(`${slug(project)}.pdf`);
 }
