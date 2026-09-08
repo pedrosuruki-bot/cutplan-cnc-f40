@@ -4,3 +4,8 @@
 
 [build.environment]
   NODE_VERSION = "22.12.0"
+  NPM_FLAGS = "--version"
+
+[dev]
+  command = "bun run dev"
+  port = 5173
