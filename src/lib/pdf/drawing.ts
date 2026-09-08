@@ -15,13 +15,71 @@ function slug(project: Project): string {
   );
 }
 
-function fitTextSize(text: string, width: number, height: number, showPartIds: boolean): number {
-  const charWidth = showPartIds ? 0.48 : 0.5;
-  const lineHeight = showPartIds ? 2.1 : 1.2;
-  const lines = showPartIds ? 2 : 1;
-  const byWidth = width / Math.max(1, text.length * charWidth);
-  const byHeight = height / (lines * lineHeight);
-  return Math.max(3.2, Math.min(10, byWidth, byHeight));
+function drawPartMeasurement(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  text: string,
+): void {
+  const pad = 0.7;
+  const usableW = Math.max(1.2, w - pad * 2);
+  const usableH = Math.max(1.2, h - pad * 2);
+  const centerX = x + w / 2;
+  const centerY = y + h / 2;
+  const minPt = 1.8;
+  const maxPt = 9;
+  const mmPerPoint = 0.3528;
+  const averageGlyphMm = 0.5 * mmPerPoint;
+  const textHeightFactor = 1.25;
+
+  // First try horizontal text. The calculation uses the actual conversion
+  // from PDF points to millimetres, so the text cannot silently overflow.
+  const fitHorizontal = Math.min(
+    maxPt,
+    usableW / Math.max(1, text.length * averageGlyphMm),
+    usableH / (mmPerPoint * textHeightFactor),
+  );
+  if (fitHorizontal >= minPt) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(fitHorizontal);
+    doc.text(text, centerX, centerY + fitHorizontal * mmPerPoint * 0.35, {
+      align: "center",
+    });
+    return;
+  }
+
+  // For narrow pieces, rotate the complete measurement and use the longer side.
+  const fitVertical = Math.min(
+    maxPt,
+    usableH / Math.max(1, text.length * averageGlyphMm),
+    usableW / (mmPerPoint * textHeightFactor),
+  );
+  if (fitVertical >= minPt) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(fitVertical);
+    doc.text(text, centerX, centerY + fitVertical * mmPerPoint * 0.35, {
+      align: "center",
+      angle: 90,
+    });
+    return;
+  }
+
+  // Extremely small pieces: split the two dimensions so both values stay inside.
+  const [first, second = ""] = text.split("x");
+  const tinyPt = Math.max(
+    minPt,
+    Math.min(3.8, usableW / (mmPerPoint * 2.8), usableH / (mmPerPoint * 2.8)),
+  );
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(tinyPt);
+  doc.text(first, centerX, centerY - tinyPt * mmPerPoint * 0.55, {
+    align: "center",
+  });
+  doc.text(`x${second}`, centerX, centerY + tinyPt * mmPerPoint * 0.95, {
+    align: "center",
+  });
 }
 
 function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void {
@@ -140,36 +198,17 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     doc.setLineWidth(0.22);
     doc.rect(x, y, w, h, "FD");
 
-    // Toda peça recebe a sua medida dentro do próprio retângulo.
-    // O tamanho da fonte adapta-se ao espaço disponível, mesmo nas peças estreitas.
-    const dimText = `${Math.round(p.w)} × ${Math.round(p.h)}`;
-    const fontSize = fitTextSize(dimText, w - 2, h - 2, showPartIds);
-    const centerX = x + w / 2;
-    const centerY = y + h / 2;
-    doc.setTextColor(20, 20, 20);
+    // Always print the dimensions inside the piece. The label adapts to the piece:
+    // horizontal when it fits, vertical for narrow pieces, split for very tiny ones.
+    const dimText = `${Math.round(p.w)}x${Math.round(p.h)}`;
+    drawPartMeasurement(doc, x, y, w, h, dimText);
 
-    if (showPartIds) {
-      if (w >= 10 && h >= 6) {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(Math.max(3.2, Math.min(7, fontSize)));
-        doc.text(p.partId, centerX, centerY - Math.max(1.5, fontSize * 0.35), {
-          align: "center",
-        });
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(Math.max(3.2, fontSize - 0.2));
-        doc.text(dimText, centerX, centerY + Math.max(1.5, fontSize * 0.45), {
-          align: "center",
-        });
-      } else {
-        // Em peças muito pequenas, dá prioridade à medida, mantendo-a dentro da peça.
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(Math.max(3.2, fontSize));
-        doc.text(dimText, centerX, centerY + fontSize * 0.35, { align: "center" });
-      }
-    } else {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(fontSize);
-      doc.text(dimText, centerX, centerY + fontSize * 0.35, { align: "center" });
+    if (showPartIds && w > 25 && h > 18) {
+      const idSize = Math.max(4.5, Math.min(7, Math.min(w / 18, h / 8)));
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(idSize);
+      doc.setTextColor(35, 35, 35);
+      doc.text(p.partId, x + w / 2, y + h / 2 - 4, { align: "center" });
     }
   }
 
