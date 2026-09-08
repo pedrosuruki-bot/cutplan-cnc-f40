@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Download, FileCode2, FileType2, Printer } from "lucide-react";
 import { useProject } from "@/hooks/useProject";
 import { EmptyState, PageHeader, Panel, Stat, btn, btnPrimary } from "@/components/ui-bits";
-import { exportProjectPdf } from "@/lib/pdf";
+import { exportProjectDetailsPdf, exportSheetDrawingPdf } from "@/lib/pdf/split";
 import { eur, m2, num, pct } from "@/lib/format";
 import { exportLayoutDxf, exportLayoutSvg } from "@/lib/vector-export";
 
@@ -61,8 +61,11 @@ function ReportPage() {
             <button className={btn} onClick={() => exportLayoutDxf(project, result)}>
               <FileCode2 className="h-4 w-4" /> DXF
             </button>
-            <button className={btnPrimary} onClick={() => exportProjectPdf(project, result)}>
-              <Download className="h-4 w-4" /> Exportar PDF
+            <button className={btnPrimary} onClick={() => exportSheetDrawingPdf(project, result)}>
+              <Download className="h-4 w-4" /> PDF — Desenho das chapas
+            </button>
+            <button className={btn} onClick={() => exportProjectDetailsPdf(project, result)}>
+              <Download className="h-4 w-4" /> PDF — Detalhes do projeto
             </button>
           </>
         }
