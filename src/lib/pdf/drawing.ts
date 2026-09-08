@@ -1,3 +1,5 @@
+/* prettier-ignore-file */
+
 import { jsPDF } from "jspdf";
 import type { OptimizationResult, Project, SheetLayout } from "@/types";
 import { rgbForPart } from "@/lib/plan-colors";
@@ -158,7 +160,6 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   doc.setFontSize(11);
   doc.text(`${Math.round(layout.width)} mm`, ox + drawW / 2, yDim + 5, { align: "center" });
 
-  // Vertical dimension is deliberately outside the sheet and inside the A4 margin.
   const xDim = Math.min(pageW - 13, ox + drawW + 11);
   doc.line(xDim, oy, xDim, oy + drawH);
   doc.line(xDim - 2, oy, xDim + 2, oy);
