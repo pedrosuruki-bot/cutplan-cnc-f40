@@ -26,10 +26,10 @@ function newSheet(): Sheet {
   return {
     id: crypto.randomUUID(),
     name: "Chapa",
-    material: "MDF Branco 18",
-    length: 2800,
-    width: 2070,
-    thickness: 18,
+    material: "BRANCO 16MM",
+    length: 2840,
+    width: 2100,
+    thickness: 16,
     quantity: 1,
     price: 0,
   };
@@ -88,14 +88,29 @@ function SheetsPage() {
         description="Adiciona rapidamente formatos usados na oficina."
       >
         <div className="flex flex-wrap gap-2">
-          <button className={btn} onClick={() => addPreset(2800, 2070, 18, "MDF Branco 18")}>
-            <Zap className="h-4 w-4" /> MDF 2800×2070×18
+          <button className={btn} onClick={() => addPreset(2840, 2100, 16, "BRANCO 16MM")}>
+            <Zap className="h-4 w-4" /> BRANCO 16MM — 2840×2100×16
           </button>
-          <button className={btn} onClick={() => addPreset(2750, 1830, 18, "MDF 18")}>
-            <Zap className="h-4 w-4" /> MDF 2750×1830×18
+          <button className={btn} onClick={() => addPreset(2840, 2100, 10, "BRANCO 10MM")}>
+            <Zap className="h-4 w-4" /> BRANCO 10MM — 2840×2100×10
           </button>
-          <button className={btn} onClick={() => addPreset(2440, 1220, 18, "MDF 18")}>
-            <Zap className="h-4 w-4" /> MDF 2440×1220×18
+          <button className={btn} onClick={() => addPreset(2840, 2100, 10, "LINHO 10MM")}>
+            <Zap className="h-4 w-4" /> LINHO 10MM — 2840×2100×10
+          </button>
+          <button className={btn} onClick={() => addPreset(2840, 2100, 16, "LINHO 16MM")}>
+            <Zap className="h-4 w-4" /> LINHO 16MM — 2840×2100×16
+          </button>
+          <button className={btn} onClick={() => addPreset(2840, 2100, 16, "CINZA CLARO 16MM")}>
+            <Zap className="h-4 w-4" /> CINZA CLARO 16MM — 2840×2100×16
+          </button>
+          <button className={btn} onClick={() => addPreset(2840, 2100, 10, "CINZA CLARO 10MM")}>
+            <Zap className="h-4 w-4" /> CINZA CLARO 10MM — 2840×2100×10
+          </button>
+          <button className={btn} onClick={() => addPreset(2840, 2100, 10, "CINZA ESCURO 10MM")}>
+            <Zap className="h-4 w-4" /> CINZA ESCURO 10MM — 2840×2100×10
+          </button>
+          <button className={btn} onClick={() => addPreset(2840, 2100, 16, "CINZA ESCURO 16MM")}>
+            <Zap className="h-4 w-4" /> CINZA ESCURO 16MM — 2840×2100×16
           </button>
         </div>
       </Panel>
@@ -270,13 +285,13 @@ function SheetsPage() {
                           }
                         />
                       </td>
-                      {(["length", "width", "thickness", "quantity", "price"] as const).map((k) => (
+                      {["length", "width", "thickness", "quantity", "price"].map((k) => (
                         <td key={k} className="py-2 pr-3">
                           <input
                             type="number"
                             min={0}
                             className={cn(inputClass, "w-28")}
-                            value={s[k]}
+                            value={s[k as keyof Sheet] as number}
                             onChange={(e) =>
                               update(s.id, { [k]: Number(e.target.value) } as Partial<Sheet>)
                             }
