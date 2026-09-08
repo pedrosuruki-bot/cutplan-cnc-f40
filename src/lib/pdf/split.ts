@@ -263,52 +263,44 @@ function sheetPage(doc: jsPDF, project: Project, layout: SheetLayout, cost: numb
 function cutListPage(doc: jsPDF, project: Project, result: OptimizationResult, startIndex: number): number {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const rows = result.layouts.flatMap((layout) => layout.placements.map((p) => ({ layout, p })));
+  let y = 20;
   let i = startIndex;
+  doc.addPage("a4", "portrait");
   frame(doc, project, doc.getNumberOfPages(), 0);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(17);
-  doc.text("LISTA DE CORTE — OFICINA", 12, 25);
-  doc.setFontSize(9);
+  doc.setFontSize(13);
+  doc.text("LISTA DE CORTE", 12, y);
+  y += 8;
   doc.setFont("helvetica", "normal");
-  doc.text(`${project.name} · ${project.client || "Sem cliente"} · ${project.date}`, 12, 31);
-  doc.text(`Máquina: Altendorf F40 · Kerf: ${project.parameters.kerf} mm · Margem: ${project.parameters.margin} mm · Espaçamento: ${project.parameters.spacing} mm`, 12, 36);
-  const cols = [12, 23, 34, 48, 65, 112, 140, 158, 172, 205, 238];
-  const headers = ["OK", "#", "Ch", "ID", "Peça", "Compr.", "Larg.", "Rot.", "Material", "Fita", "Observações"];
-  let y = 44;
-  const rowH = 7;
-  const drawHeader = () => {
-    doc.setFillColor(35, 35, 35);
-    doc.setTextColor(255, 255, 255);
-    doc.rect(10, y - 5, pageW - 20, 7, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.2);
-    headers.forEach((h, idx) => doc.text(h, cols[idx]!, y));
-    y += rowH;
-    doc.setTextColor(30, 30, 30);
-    doc.setFont("helvetica", "normal");
-  };
-  drawHeader();
-  while (i < rows.length) {
-    if (y > pageH - 18) {
-      doc.addPage("a4", "portrait");
-      frame(doc, project, doc.getNumberOfPages(), 0);
-      y = 20;
-      drawHeader();
+  doc.setFontSize(7.5);
+  const cols = [10, 18, 28, 40, 72, 125, 141, 157, 172, 195, 220];
+  const header = ["", "#", "Ch", "ID", "Nome", "Largura", "Altura", "Rot.", "Material", "Fita", "Notas"];
+  doc.setFillColor(225, 225, 225);
+  doc.rect(10, y - 4.5, pageW - 20, 6, "F");
+  doc.setFont("helvetica", "bold");
+  header.forEach((h, idx) => doc.text(h, cols[idx]!, y));
+  doc.setFont("helvetica", "normal");
+  y += 7;
+  for (const layout of result.layouts) {
+    for (const p of layout.placements) {
+      if (y > pageH - 22) {
+        doc.addPage("a4", "portrait");
+        frame(doc, project, doc.getNumberOfPages(), 0);
+        y = 20;
+      }
+      const part = project.parts.find((x) => x.id === p.partId);
+      const values = ["[ ]", String(i + 1), String(layout.index), p.partId, p.name.slice(0, 28), String(Math.round(p.w)), String(Math.round(p.h)), p.rotated ? "90°" : "0°", (part?.material ?? layout.material).slice(0, 25), (part?.edgeBanding || "—").slice(0, 16), (part?.notes || "").slice(0, 28)];
+      if (i % 2 === 0) {
+        doc.setFillColor(245, 245, 245);
+        doc.rect(10, y - 5, pageW - 20, rowH, "F");
+      }
+      doc.setFontSize(7.2);
+      values.forEach((v, idx) => doc.text(v, cols[idx]!, y));
+      doc.setDrawColor(220);
+      doc.line(10, y + 2, pageW - 10, y + 2);
+      y += rowH;
+      i++;
     }
-    const { layout, p } = rows[i]!;
-    const part = project.parts.find((x) => x.id === p.partId);
-    const values = ["[ ]", String(i + 1), String(layout.index), p.partId, p.name.slice(0, 28), String(Math.round(p.w)), String(Math.round(p.h)), p.rotated ? "90°" : "0°", (part?.material ?? layout.material).slice(0, 25), (part?.edgeBanding || "—").slice(0, 16), (part?.notes || "").slice(0, 28)];
-    if (i % 2 === 0) {
-      doc.setFillColor(245, 245, 245);
-      doc.rect(10, y - 5, pageW - 20, rowH, "F");
-    }
-    doc.setFontSize(7.2);
-    values.forEach((v, idx) => doc.text(v, cols[idx]!, y));
-    doc.setDrawColor(220);
-    doc.line(10, y + 2, pageW - 10, y + 2);
-    y += rowH;
-    i++;
   }
   if (result.unplaced.length) {
     if (y > pageH - 45) {
@@ -357,6 +349,14 @@ function operationPages(doc: jsPDF, project: Project, result: OptimizationResult
       y += 6;
     }
   }
+}
+
+export function exportProjectDetailsPdf(project: Project, result: OptimizationResult): void {
+  if (!result.layouts.length) return;
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  cutListPage(doc, project, result, 0);
+  operationPages(doc, project, result);
+  doc.save(`${slug(project)}-detalhes.pdf`);
 }
 
 export function exportProjectPdf(project: Project, result: OptimizationResult): void {
