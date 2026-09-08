@@ -77,13 +77,7 @@ interface Packed {
   strategy: Strategy;
 }
 
-function pack(
-  instances: Instance[],
-  sheet: Sheet,
-  params: CutParameters,
-  strategy: Strategy,
-  orderVariant: number,
-): Packed {
+function pack(instances: Instance[], sheet: Sheet, params: CutParameters, strategy: Strategy, orderVariant: number): Packed {
   if (strategy === "altendorf-f40") {
     const planned = packForAltendorfF40(instances, sheet, params, orderVariant);
     return { placements: planned.placements, remaining: planned.remaining, cuts: planned.cuts, strategy };
@@ -95,8 +89,6 @@ function pack(
   const ordered = sortInstances(instances, orderVariant);
   const placements: Placement[] = [];
   const remaining: Instance[] = [];
-  let cuts: CutStep[] = [];
-
   const heuristic = heuristicFor(params.mode);
   const guillotine = strategy === "guillotine" ? new GuillotineBin(usableW, usableH) : null;
   const maxrects = strategy === "maxrects" ? new MaxRectsBin(usableW, usableH) : null;
@@ -105,13 +97,10 @@ function pack(
     const placed = strategy === "guillotine"
       ? guillotine!.insert(inst.part.length, inst.part.width, allowRotate, gap)
       : maxrects!.insert(inst.part.length, inst.part.width, allowRotate, heuristic, gap);
-    if (!placed) {
-      remaining.push(inst);
-      continue;
-    }
+    if (!placed) { remaining.push(inst); continue; }
     placements.push({ partId: inst.part.id, instance: inst.instance, name: inst.part.name, x: placed.x + margin, y: placed.y + margin, w: placed.w, h: placed.h, rotated: placed.rotated });
   }
-  cuts = strategy === "guillotine"
+  const cuts = strategy === "guillotine"
     ? guillotine!.cuts.map((c, i) => ({ ...c, order: i + 1, position: c.position + margin, from: c.from + margin, to: c.to + margin }))
     : buildCutSequence(placements, sheet.length, sheet.width);
   return { placements, remaining, cuts, strategy };
@@ -163,7 +152,7 @@ export function optimize(
 
     const materialSheets = sheets.filter((s) => normalizeMaterial(s.material) === material && s.quantity > 0);
     const materialOffcuts = params.useOffcutStock
-      ? offcutStock.filter((o) => normalizeMaterial(o.material) === material && o.quantity > 0)
+      ? offcutStock.filter((o) => normalizeMaterial(o.material) === material && o.quantity > 0 && o.thickness > 0)
       : [];
 
     const offcutSheets = materialOffcuts.flatMap((o) =>
@@ -183,8 +172,9 @@ export function optimize(
       })),
     );
     const purchasedSheets = materialSheets.map((s) => ({ sheet: s, left: s.quantity, isOffcut: false }));
-    const stock = [...offcutSheets, ...purchasedSheets];
 
+    // Sobras têm prioridade real: só abrimos uma chapa comprada quando nenhuma sobra disponível consegue receber peças.
+    const stock = [...offcutSheets, ...purchasedSheets];
     if (!stock.length) {
       instances.forEach((i) => addUnplaced(i.part, "Sem chapa deste material"));
       continue;
@@ -194,17 +184,16 @@ export function optimize(
       const available = stock.filter((s) => s.left > 0);
       if (!available.length) { instances.forEach((i) => addUnplaced(i.part, "Chapas insuficientes")); break; }
 
-      const candidates = available.map((slot) => ({ slot, packed: choosePacked(instances, slot.sheet, params) }));
-      candidates.sort((a, b) => {
-        if (b.packed.placements.length !== a.packed.placements.length) return b.packed.placements.length - a.packed.placements.length;
-        const au = a.packed.placements.reduce((s, p) => s + p.w * p.h, 0);
-        const bu = b.packed.placements.reduce((s, p) => s + p.w * p.h, 0);
-        return bu - au;
-      });
-      const chosen = candidates[0]!;
-      if (!chosen.packed.placements.length) {
+      const offcutAvailable = available.filter((s) => s.isOffcut);
+      const purchasedAvailable = available.filter((s) => !s.isOffcut);
+      const evaluate = (slots: typeof available) => slots.map((slot) => ({ slot, packed: choosePacked(instances, slot.sheet, params) }));
+      const offcutCandidates = evaluate(offcutAvailable);
+      const usableOffcutCandidates = offcutCandidates.filter((c) => c.packed.placements.length > 0);
+      const candidates = usableOffcutCandidates.length ? usableOffcutCandidates : evaluate(purchasedAvailable);
+
+      if (!candidates.length) {
         for (const inst of instances) {
-          const sheet = chosen.slot.sheet;
+          const sheet = (offcutAvailable[0] ?? purchasedAvailable[0])!.sheet;
           const uw = sheet.length - 2 * Math.max(0, params.margin);
           const uh = sheet.width - 2 * Math.max(0, params.margin);
           const direct = inst.part.length <= uw && inst.part.width <= uh;
@@ -214,6 +203,13 @@ export function optimize(
         break;
       }
 
+      candidates.sort((a, b) => {
+        if (b.packed.placements.length !== a.packed.placements.length) return b.packed.placements.length - a.packed.placements.length;
+        const au = a.packed.placements.reduce((s, p) => s + p.w * p.h, 0);
+        const bu = b.packed.placements.reduce((s, p) => s + p.w * p.h, 0);
+        return bu - au;
+      });
+      const chosen = candidates[0]!;
       const slot = chosen.slot;
       slot.left -= 1;
       const sheet = slot.sheet;
