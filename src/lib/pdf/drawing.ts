@@ -21,18 +21,21 @@ function fitDimensionFont(
   maxWidthMm: number,
   maxHeightMm: number,
   maxPt = 8,
-  minPt = 2.2,
+  minPt = 2.6,
 ): number {
   doc.setFont("helvetica", "bold");
-  const maxAllowed = Math.min(maxPt, maxHeightMm / 0.3528 / 1.15);
-  let size = Math.min(maxAllowed, 8);
+
+  const safeWidth = Math.max(1, maxWidthMm);
+  const safeHeight = Math.max(1, maxHeightMm);
+  let size = Math.min(maxPt, safeHeight / 0.36);
 
   while (size > minPt) {
     doc.setFontSize(size);
-    if (doc.getTextWidth(text) <= maxWidthMm) return size;
+    if (doc.getTextWidth(text) <= safeWidth) return size;
     size -= 0.2;
   }
 
+  doc.setFontSize(minPt);
   return minPt;
 }
 
@@ -43,41 +46,42 @@ function drawPieceDimensions(
   w: number,
   h: number,
 ): void {
-  // The PDF follows the CutList Optimizer style: the horizontal dimension
-  // is printed near the top inside the piece and the vertical dimension is
-  // printed rotated 90° near the left side. Both values are always present.
-  const pad = Math.max(0.8, Math.min(w, h) * 0.05);
+  // Exact workshop-style coting:
+  // - width is horizontal near the top edge;
+  // - height is vertical near the left edge;
+  // - both are ALWAYS present and use the displayed rectangle dimensions.
+  const pad = Math.max(0.7, Math.min(1.4, Math.min(w, h) * 0.035));
   const widthText = `${Math.round(w)}`;
   const heightText = `${Math.round(h)}`;
   const centerX = x + w / 2;
   const centerY = y + h / 2;
 
+  doc.setTextColor(20, 20, 20);
+  doc.setFont("helvetica", "bold");
+
+  // Horizontal dimension. Keep it inside the top strip of the part.
   const horizontalPt = fitDimensionFont(
     doc,
     widthText,
-    Math.max(1, w - pad * 2),
-    Math.max(1, Math.min(h * 0.24, 5)),
+    Math.max(1.2, w - pad * 2),
+    Math.max(1.2, Math.min(4.5, h * 0.22)),
     8,
-    2.1,
+    2.6,
   );
-  const verticalPt = fitDimensionFont(
-    doc,
-    heightText,
-    Math.max(1, h - pad * 2),
-    Math.max(1, Math.min(w * 0.24, 5)),
-    8,
-    2.1,
-  );
-
-  // Horizontal dimension, inside the upper part of the piece.
-  doc.setTextColor(20, 20, 20);
-  doc.setFont("helvetica", "bold");
   doc.setFontSize(horizontalPt);
   doc.text(widthText, centerX, y + pad + horizontalPt * 0.3528, {
     align: "center",
   });
 
-  // Vertical dimension, inside the left part of the piece.
+  // Vertical dimension. Rotate it 90° and keep it inside the left strip.
+  const verticalPt = fitDimensionFont(
+    doc,
+    heightText,
+    Math.max(1.2, h - pad * 2),
+    Math.max(1.2, Math.min(4.5, w * 0.22)),
+    8,
+    2.6,
+  );
   doc.setFontSize(verticalPt);
   doc.text(heightText, x + pad + verticalPt * 0.3528, centerY, {
     align: "center",
@@ -104,8 +108,6 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   const ox = areaX + (areaW - drawW) / 2;
   const oy = top + (areaH - drawH) / 2;
 
-  // Convert optimizer coordinates (length x width) to the workshop drawing
-  // orientation (width horizontal x length vertical), matching the reference.
   const mapRect = (px: number, py: number, pw: number, ph: number) => ({
     x: layout.width - (py + ph),
     y: px,
@@ -203,8 +205,6 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     doc.setLineWidth(0.22);
     doc.rect(x, y, w, h, "FD");
 
-    // Dimensions are always shown as separate horizontal and vertical values,
-    // exactly like the workshop reference. Font size follows the piece size.
     drawPieceDimensions(doc, x, y, w, h);
 
     if (showPartIds && w > 25 && h > 18) {
