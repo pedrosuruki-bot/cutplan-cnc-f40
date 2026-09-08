@@ -34,36 +34,62 @@ function drawPieceDimensions(
 ): void {
   const widthText = `${Math.round(actualW)}`;
   const heightText = `${Math.round(actualH)}`;
-  const pad = Math.max(0.8, Math.min(1.6, Math.min(w, h) * 0.04));
-  const topBand = Math.max(3.5, Math.min(8, h * 0.2));
-  const sideBand = Math.max(3.5, Math.min(8, w * 0.2));
+  const pad = Math.max(1, Math.min(2.2, Math.min(w, h) * 0.035));
+  const topBand = Math.max(5, Math.min(12, h * 0.18));
+  const sideBand = Math.max(5, Math.min(12, w * 0.18));
 
-  doc.setTextColor(55, 55, 55);
+  doc.setTextColor(45, 45, 45);
   doc.setFont("helvetica", "normal");
 
   const widthPt = fitText(
     doc,
     widthText,
-    Math.max(1.5, w - pad * 2),
-    Math.max(4.8, Math.min(8, topBand * 1.15)),
-    1.8,
+    Math.max(2, w - pad * 2),
+    Math.max(5.5, Math.min(11, topBand * 1.2)),
+    2.8,
   );
   doc.setFontSize(widthPt);
-  doc.text(widthText, x + w / 2, y + pad + widthPt * 0.35, { align: "center" });
+  doc.text(widthText, x + w / 2, y + pad + widthPt * 0.55, { align: "center" });
 
   const heightPt = fitText(
     doc,
     heightText,
-    Math.max(1.5, h - pad * 2),
-    Math.max(4.8, Math.min(8, sideBand * 1.15)),
-    1.8,
-    
+    Math.max(2, h - pad * 2),
+    Math.max(5.5, Math.min(11, sideBand * 1.2)),
+    2.8,
   );
   doc.setFontSize(heightPt);
-  doc.text(heightText, x + pad + heightPt * 0.35, y + h / 2, {
+  doc.text(heightText, x + pad + heightPt * 0.45, y + h / 2, {
     align: "center",
     angle: 90,
   });
+}
+
+function drawCheckerboard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  const cell = 6;
+  const rows = Math.ceil(h / cell);
+  const cols = Math.ceil(w / cell);
+
+  for (let row = 0; row < rows; row += 1) {
+    const cellY = y + row * cell;
+    const cellH = Math.min(cell, y + h - cellY);
+    for (let col = 0; col < cols; col += 1) {
+      const cellX = x + col * cell;
+      const cellW = Math.min(cell, x + w - cellX);
+      if ((row + col) % 2 === 0) {
+        doc.setFillColor(247, 247, 247);
+      } else {
+        doc.setFillColor(229, 229, 229);
+      }
+      doc.rect(cellX, cellY, cellW, cellH, "F");
+    }
+  }
 }
 
 function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void {
@@ -76,9 +102,6 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   const areaW = pageW - marginX * 2 - right;
   const areaH = pageH - top - bottom;
 
-  // A chapa é apresentada como na referência: 2100 mm na horizontal e
-  // 2840 mm na vertical. Quando o layout original é mais comprido que largo,
-  // rodamos a representação 90° sem alterar a geometria real das peças.
   const vertical = layout.length >= layout.width;
   const sheetW = vertical ? layout.width : layout.length;
   const sheetH = vertical ? layout.length : layout.width;
@@ -120,10 +143,19 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     const w = r.w * scale;
     const h = r.h * scale;
 
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(165, 165, 165);
+    drawCheckerboard(doc, x, y, w, h);
+    doc.setDrawColor(145, 145, 145);
     doc.setLineWidth(0.18);
-    doc.rect(x, y, w, h, "FD");
+    doc.rect(x, y, w, h, "S");
+
+    if (w > 28 && h > 12) {
+      doc.setTextColor(90, 90, 90);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(Math.max(5.5, Math.min(8, Math.min(w, h) * 0.12)));
+      doc.text(`${Math.round(r.w)} × ${Math.round(r.h)}`, x + w / 2, y + h / 2 + 2, {
+        align: "center",
+      });
+    }
   }
 
   for (const p of layout.placements) {
@@ -139,19 +171,18 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     doc.setLineWidth(0.22);
     doc.rect(x, y, w, h, "FD");
 
-    // As cotas seguem a orientação visual da peça, tal como no relatório:
-    // largura em cima e altura na lateral esquerda, sem o antigo "W × H" central.
     drawPieceDimensions(doc, x, y, w, h, r.w, r.h);
 
     if (showPartIds) {
-      const idSize = Math.max(4.2, Math.min(7.5, Math.min(w / 17, h / 8)));
+      const idSize = Math.max(6.5, Math.min(14, Math.min(w, h) * 0.22));
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(idSize);
+      const fittedIdSize = fitText(doc, p.partId, Math.max(4, w - 6), idSize, 5.5);
+      doc.setFontSize(fittedIdSize);
       const idWidth = doc.getTextWidth(p.partId);
 
-      if (w > idWidth + 4 && h > 14) {
+      if (w > idWidth + 6 && h > 16) {
         doc.setTextColor(25, 25, 25);
-        doc.text(p.partId, x + w / 2, y + h * 0.56, { align: "center" });
+        doc.text(p.partId, x + w / 2, y + h * 0.57, { align: "center" });
       }
     }
   }
