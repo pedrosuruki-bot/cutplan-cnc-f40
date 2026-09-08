@@ -1,13 +1,11 @@
-// @lovable.dev/vite-tanstack-config already includes the core TanStack Start, React,
-// Tailwind, path aliases, and sandbox plugins. Keep the Netlify adapter as the only
-// additional build/runtime integration needed for deployment.
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import netlify from "@netlify/vite-plugin-tanstack-start";
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [netlify()],
-  tanstackStart: {
-    // Keep the custom SSR entry used by the app's error wrapper.
-    server: { entry: "server" },
+  plugins: [tailwindcss(), tanstackStart({ server: { entry: "server" } }), netlify()],
+  resolve: {
+    tsconfigPaths: true,
   },
 });
