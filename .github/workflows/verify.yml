@@ -18,6 +18,15 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      - name: Fix lint-only source issues
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/routes/plano.tsx")
+          text = p.read_text()
+          text = text.replace('catch {}', 'catch { /* Ignore local checklist persistence errors. */ }')
+          p.write_text(text)
+          PY
       - name: Format source
         run: bunx prettier --write "src/**/*.{ts,tsx,css}" "package.json" "vite.config.ts"
       - name: Commit formatting fixes
@@ -28,7 +37,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No formatting changes needed."
           else
-            git commit -m "Format CutPlan CNC source"
+            git commit -m "Format and clean CutPlan CNC source"
             git push
             exit 0
           fi
