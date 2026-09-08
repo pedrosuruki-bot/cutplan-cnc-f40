@@ -1,0 +1,14 @@
+import type { CutParameters, Project } from "@/types";
+export const defaultParameters: CutParameters = { kerf: 3.2, margin: 10, spacing: 0, allowRotation: true, mode: "max-yield", sawMode: "altendorf-f40", sheetCostPerCut: 3.5, offcutCreditPct: 20, useOffcutStock: true };
+export function todayISO(): string { return new Date().toISOString().slice(0, 10); }
+export function createEmptyProject(): Project { return { id: crypto.randomUUID(), name: "Novo projeto", client: "", date: todayISO(), notes: "", sheets: [], parts: [], parameters: { ...defaultParameters }, offcutStock: [] }; }
+export function createDemoProject(): Project {
+  return { id: crypto.randomUUID(), name: "Móvel de cozinha — demo", client: "Cliente Demo", date: todayISO(), notes: "Projeto de demonstração com chapa MDF 2800×2070×18.", sheets: [{ id: crypto.randomUUID(), name: "MDF Branco 18", material: "MDF Branco 18", length: 2800, width: 2070, thickness: 18, quantity: 3, price: 62 }], parts: [
+    { id: "P001", name: "Lateral", length: 800, width: 400, quantity: 6, material: "MDF Branco 18", canRotate: true, grain: "none", edgeBanding: "2 lados", notes: "" },
+    { id: "P002", name: "Prateleira", length: 600, width: 350, quantity: 8, material: "MDF Branco 18", canRotate: true, grain: "none", edgeBanding: "1 lado", notes: "" },
+    { id: "P003", name: "Porta", length: 1200, width: 500, quantity: 4, material: "MDF Branco 18", canRotate: false, grain: "length", edgeBanding: "4 lados", notes: "Sentido da madeira fixo" },
+    { id: "P004", name: "Fundo", length: 900, width: 600, quantity: 4, material: "MDF Branco 18", canRotate: true, grain: "none", edgeBanding: "", notes: "" },
+    { id: "P005", name: "Gaveta frente", length: 450, width: 200, quantity: 4, material: "MDF Branco 18", canRotate: true, grain: "none", edgeBanding: "4 lados", notes: "" },
+    { id: "P006", name: "Topo", length: 1400, width: 620, quantity: 2, material: "MDF Branco 18", canRotate: false, grain: "length", edgeBanding: "3 lados", notes: "Sentido da madeira fixo" },
+  ], parameters: { ...defaultParameters }, offcutStock: [] };
+}
