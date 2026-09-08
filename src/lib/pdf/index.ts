@@ -25,7 +25,9 @@ function frame(doc: jsPDF, project: Project, page: number, total: number): void 
   doc.line(12, pageH - 12, pageW - 12, pageH - 12);
   doc.setFontSize(7);
   doc.setTextColor(110);
-  doc.text(total > 0 ? `página ${page}/${total}` : `página ${page}`, pageW - 12, pageH - 8, { align: "right" });
+  doc.text(total > 0 ? `página ${page}/${total}` : `página ${page}`, pageW - 12, pageH - 8, {
+    align: "right",
+  });
   doc.setTextColor(40);
 }
 
@@ -42,10 +44,7 @@ function sheetPage(doc: jsPDF, project: Project, layout: SheetLayout, cost: numb
   const offcutArea = Math.min(offcutAreaRaw, wasteArea);
   const rows: [string, string][] = [
     ["Painel de stock", `${layout.length}×${layout.width}×${layout.thickness}`],
-    [
-      "Área utilizada",
-      `${(layout.usedArea / 1e6).toFixed(2)} m²  ${layout.usagePct.toFixed(1)}%`,
-    ],
+    ["Área utilizada", `${(layout.usedArea / 1e6).toFixed(2)} m²  ${layout.usagePct.toFixed(1)}%`],
     [
       "Desperdício total",
       `${(wasteArea / 1e6).toFixed(2)} m²  ${((wasteArea / layout.sheetArea) * 100).toFixed(1)}%`,
@@ -61,7 +60,14 @@ function sheetPage(doc: jsPDF, project: Project, layout: SheetLayout, cost: numb
     ["Painéis", `${layout.placements.length}`],
     ["N.º de sobras", `${layout.offcuts.length}`],
     ["Custo material", `${cost.toFixed(2)} EUR`],
-    ["Método de corte", layout.cutMethod === "altendorf-f40" ? "Altendorf F40 — faixas + esquadro" : layout.cutMethod === "guillotine" ? "Guilhotina" : "Heurístico"],
+    [
+      "Método de corte",
+      layout.cutMethod === "altendorf-f40"
+        ? "Altendorf F40 — faixas + esquadro"
+        : layout.cutMethod === "guillotine"
+          ? "Guilhotina"
+          : "Heurístico",
+    ],
     ["Plano manual", layout.manual ? "Sim" : "Não"],
   ];
 
@@ -174,7 +180,6 @@ function sheetPage(doc: jsPDF, project: Project, layout: SheetLayout, cost: numb
     doc.setFont("helvetica", "normal");
   }
 
-
   // ---------- cotas exteriores da chapa (a vermelho) ----------
   doc.setDrawColor(214, 78, 78);
   doc.setTextColor(214, 78, 78);
@@ -204,8 +209,12 @@ function sheetPage(doc: jsPDF, project: Project, layout: SheetLayout, cost: numb
   );
 }
 
-
-function cutListPage(doc: jsPDF, project: Project, result: OptimizationResult, startIndex: number): number {
+function cutListPage(
+  doc: jsPDF,
+  project: Project,
+  result: OptimizationResult,
+  startIndex: number,
+): number {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const rows = result.layouts.flatMap((layout) => layout.placements.map((p) => ({ layout, p })));
@@ -217,34 +226,94 @@ function cutListPage(doc: jsPDF, project: Project, result: OptimizationResult, s
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.text(`${project.name} · ${project.client || "Sem cliente"} · ${project.date}`, 12, 31);
-  doc.text(`Máquina: Altendorf F40 · Kerf: ${project.parameters.kerf} mm · Margem: ${project.parameters.margin} mm · Espaçamento: ${project.parameters.spacing} mm`, 12, 36);
+  doc.text(
+    `Máquina: Altendorf F40 · Kerf: ${project.parameters.kerf} mm · Margem: ${project.parameters.margin} mm · Espaçamento: ${project.parameters.spacing} mm`,
+    12,
+    36,
+  );
 
   const cols = [12, 23, 34, 48, 65, 112, 140, 158, 172, 205, 238];
-  const headers = ["OK", "#", "Ch", "ID", "Peça", "Compr.", "Larg.", "Rot.", "Material", "Fita", "Observações"];
+  const headers = [
+    "OK",
+    "#",
+    "Ch",
+    "ID",
+    "Peça",
+    "Compr.",
+    "Larg.",
+    "Rot.",
+    "Material",
+    "Fita",
+    "Observações",
+  ];
   let y = 44;
   const rowH = 7;
   const drawHeader = () => {
-    doc.setFillColor(35, 35, 35); doc.setTextColor(255, 255, 255); doc.rect(10, y - 5, pageW - 20, 7, "F");
-    doc.setFont("helvetica", "bold"); doc.setFontSize(7.2);
+    doc.setFillColor(35, 35, 35);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(10, y - 5, pageW - 20, 7, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.2);
     headers.forEach((h, idx) => doc.text(h, cols[idx]!, y));
-    y += rowH; doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "normal");
+    y += rowH;
+    doc.setTextColor(30, 30, 30);
+    doc.setFont("helvetica", "normal");
   };
   drawHeader();
   while (i < rows.length) {
-    if (y > pageH - 18) { doc.addPage("a4", "portrait"); frame(doc, project, doc.getNumberOfPages(), 0); y = 20; drawHeader(); }
+    if (y > pageH - 18) {
+      doc.addPage("a4", "portrait");
+      frame(doc, project, doc.getNumberOfPages(), 0);
+      y = 20;
+      drawHeader();
+    }
     const { layout, p } = rows[i]!;
     const part = project.parts.find((x) => x.id === p.partId);
-    const values = ["[ ]", String(i + 1), String(layout.index), p.partId, p.name.slice(0, 28), String(Math.round(p.w)), String(Math.round(p.h)), p.rotated ? "90°" : "0°", (part?.material ?? layout.material).slice(0, 25), (part?.edgeBanding || "—").slice(0, 16), (part?.notes || "").slice(0, 28)];
-    if (i % 2 === 0) { doc.setFillColor(245, 245, 245); doc.rect(10, y - 5, pageW - 20, rowH, "F"); }
-    doc.setFontSize(7.2); values.forEach((v, idx) => doc.text(v, cols[idx]!, y));
-    doc.setDrawColor(220); doc.line(10, y + 2, pageW - 10, y + 2);
-    y += rowH; i++;
+    const values = [
+      "[ ]",
+      String(i + 1),
+      String(layout.index),
+      p.partId,
+      p.name.slice(0, 28),
+      String(Math.round(p.w)),
+      String(Math.round(p.h)),
+      p.rotated ? "90°" : "0°",
+      (part?.material ?? layout.material).slice(0, 25),
+      (part?.edgeBanding || "—").slice(0, 16),
+      (part?.notes || "").slice(0, 28),
+    ];
+    if (i % 2 === 0) {
+      doc.setFillColor(245, 245, 245);
+      doc.rect(10, y - 5, pageW - 20, rowH, "F");
+    }
+    doc.setFontSize(7.2);
+    values.forEach((v, idx) => doc.text(v, cols[idx]!, y));
+    doc.setDrawColor(220);
+    doc.line(10, y + 2, pageW - 10, y + 2);
+    y += rowH;
+    i++;
   }
   if (result.unplaced.length) {
-    if (y > pageH - 45) { doc.addPage("a4", "portrait"); frame(doc, project, doc.getNumberOfPages(), 0); y = 20; }
-    y += 4; doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("PEÇAS NÃO ACOMODADAS", 12, y); y += 6;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
-    for (const u of result.unplaced) { doc.text(`${u.partId} · ${u.name} · ${u.length}×${u.width} mm ×${u.quantity} · ${u.reason}`, 14, y); y += 5; }
+    if (y > pageH - 45) {
+      doc.addPage("a4", "portrait");
+      frame(doc, project, doc.getNumberOfPages(), 0);
+      y = 20;
+    }
+    y += 4;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("PEÇAS NÃO ACOMODADAS", 12, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    for (const u of result.unplaced) {
+      doc.text(
+        `${u.partId} · ${u.name} · ${u.length}×${u.width} mm ×${u.quantity} · ${u.reason}`,
+        14,
+        y,
+      );
+      y += 5;
+    }
   }
   return i;
 }
@@ -254,24 +323,70 @@ function operationPages(doc: jsPDF, project: Project, result: OptimizationResult
     doc.addPage("a4", "portrait");
     frame(doc, project, doc.getNumberOfPages(), 0);
     const pageW = doc.internal.pageSize.getWidth();
-    doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
     doc.text(`OPERAÇÕES — CHAPA ${layout.index}`, 12, 25);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-    doc.text(`${layout.material} · ${layout.length}×${layout.width}×${layout.thickness} mm`, 12, 31);
-    doc.text("Executar primeiro os RASGOS e depois os cortes no ESQUADRO. A lista é uma orientação de produção, não substitui as regras de segurança da máquina.", 12, 36);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(
+      `${layout.material} · ${layout.length}×${layout.width}×${layout.thickness} mm`,
+      12,
+      31,
+    );
+    doc.text(
+      "Executar primeiro os RASGOS e depois os cortes no ESQUADRO. A lista é uma orientação de produção, não substitui as regras de segurança da máquina.",
+      12,
+      36,
+    );
     let y = 45;
     const heads = ["#", "Fase", "Tipo", "Posição", "De", "Até", "Operação"];
     const xs = [12, 22, 45, 70, 94, 119, 145];
-    const drawOperationHeader = () => { doc.setFillColor(35,35,35); doc.setTextColor(255,255,255); doc.rect(10,y-5,pageW-20,7,"F"); doc.setFont("helvetica","bold"); doc.setFontSize(7.5); heads.forEach((h,i)=>doc.text(h,xs[i]!,y)); y += 7; doc.setTextColor(30,30,30); doc.setFont("helvetica","normal"); };
+    const drawOperationHeader = () => {
+      doc.setFillColor(35, 35, 35);
+      doc.setTextColor(255, 255, 255);
+      doc.rect(10, y - 5, pageW - 20, 7, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      heads.forEach((h, i) => doc.text(h, xs[i]!, y));
+      y += 7;
+      doc.setTextColor(30, 30, 30);
+      doc.setFont("helvetica", "normal");
+    };
     drawOperationHeader();
     for (const c of layout.cuts) {
-      if (y > doc.internal.pageSize.getHeight() - 18) { doc.addPage("a4","portrait"); frame(doc,project,doc.getNumberOfPages(),0); y=24; doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.text(`OPERAÇÕES — CHAPA ${layout.index} (continuação)`,12,18); drawOperationHeader(); }
-      if (c.order % 2 === 0) { doc.setFillColor(245,245,245); doc.rect(10,y-5,pageW-20,7,"F"); }
+      if (y > doc.internal.pageSize.getHeight() - 18) {
+        doc.addPage("a4", "portrait");
+        frame(doc, project, doc.getNumberOfPages(), 0);
+        y = 24;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.text(`OPERAÇÕES — CHAPA ${layout.index} (continuação)`, 12, 18);
+        drawOperationHeader();
+      }
+      if (c.order % 2 === 0) {
+        doc.setFillColor(245, 245, 245);
+        doc.rect(10, y - 5, pageW - 20, 7, "F");
+      }
       const phase = c.phase === "rip" ? "RASGO" : c.phase === "crosscut" ? "ESQUADRO" : "ACAB.";
-      const vals = [String(c.order), phase, c.type === "horizontal" ? "Horizontal" : "Vertical", `${c.position} mm`, `${c.from} mm`, `${c.to} mm`, c.note.slice(0, 48)];
-      vals.forEach((v,i)=>doc.text(v,xs[i]!,y)); y += 7;
+      const vals = [
+        String(c.order),
+        phase,
+        c.type === "horizontal" ? "Horizontal" : "Vertical",
+        `${c.position} mm`,
+        `${c.from} mm`,
+        `${c.to} mm`,
+        c.note.slice(0, 48),
+      ];
+      vals.forEach((v, i) => doc.text(v, xs[i]!, y));
+      y += 7;
     }
-    doc.setFontSize(7); doc.setTextColor(90); doc.text(`Total: ${layout.cuts.length} operações · comprimento estimado ${ (layout.cuts.reduce((s,c)=>s+Math.abs(c.to-c.from),0)/1000).toFixed(2)} m`, 12, doc.internal.pageSize.getHeight()-18);
+    doc.setFontSize(7);
+    doc.setTextColor(90);
+    doc.text(
+      `Total: ${layout.cuts.length} operações · comprimento estimado ${(layout.cuts.reduce((s, c) => s + Math.abs(c.to - c.from), 0) / 1000).toFixed(2)} m`,
+      12,
+      doc.internal.pageSize.getHeight() - 18,
+    );
     doc.setTextColor(30);
   }
 }
@@ -307,10 +422,18 @@ export function exportProjectPdf(project: Project, result: OptimizationResult): 
     `Custo estimado do material: ${result.stats.totalCost.toFixed(2)} EUR`,
     `Custo líquido estimado: ${result.stats.estimatedNetCost.toFixed(2)} EUR`,
   ];
-  for (const line of lines) { doc.text(line, 12, y); y += 6.5; }
-  if (project.notes) { y += 3; doc.text(doc.splitTextToSize(`Observações: ${project.notes}`, pageW - 24), 12, y); }
+  for (const line of lines) {
+    doc.text(line, 12, y);
+    y += 6.5;
+  }
+  if (project.notes) {
+    y += 3;
+    doc.text(doc.splitTextToSize(`Observações: ${project.notes}`, pageW - 24), 12, y);
+  }
 
-  const costPerSheet = result.stats.sheetsUsed ? result.stats.totalCost / result.stats.sheetsUsed : 0;
+  const costPerSheet = result.stats.sheetsUsed
+    ? result.stats.totalCost / result.stats.sheetsUsed
+    : 0;
   for (const layout of result.layouts) {
     doc.addPage("a4", "landscape");
     page = doc.getNumberOfPages();
@@ -330,36 +453,92 @@ export function exportProjectPdf(project: Project, result: OptimizationResult): 
     doc.text(`Chapa ${layout.index}: ${layout.offcuts.length} sobras aproveitáveis`, 12, fy);
     fy += 6;
     for (const o of layout.offcuts.slice(0, 12)) {
-      if (fy > pageH - 18) { doc.addPage("a4", "portrait"); page = doc.getNumberOfPages(); frame(doc, project, page, 0); fy = 20; }
-      doc.text(`• ${Math.round(o.w)} × ${Math.round(o.h)} mm`, 15, fy); fy += 5;
+      if (fy > pageH - 18) {
+        doc.addPage("a4", "portrait");
+        page = doc.getNumberOfPages();
+        frame(doc, project, page, 0);
+        fy = 20;
+      }
+      doc.text(`• ${Math.round(o.w)} × ${Math.round(o.h)} mm`, 15, fy);
+      fy += 5;
     }
   }
   if (result.unplaced.length) {
-    fy += 4; doc.setFont("helvetica", "bold"); doc.text("Peças não acomodadas:", 12, fy); fy += 6; doc.setFont("helvetica", "normal");
+    fy += 4;
+    doc.setFont("helvetica", "bold");
+    doc.text("Peças não acomodadas:", 12, fy);
+    fy += 6;
+    doc.setFont("helvetica", "normal");
     for (const u of result.unplaced) {
-      if (fy > pageH - 18) { doc.addPage("a4", "portrait"); page = doc.getNumberOfPages(); frame(doc, project, page, 0); fy = 20; }
-      doc.text(`• ${u.partId} ${u.name} ${u.length}×${u.width} mm ×${u.quantity} — ${u.reason}`, 15, fy); fy += 5;
+      if (fy > pageH - 18) {
+        doc.addPage("a4", "portrait");
+        page = doc.getNumberOfPages();
+        frame(doc, project, page, 0);
+        fy = 20;
+      }
+      doc.text(
+        `• ${u.partId} ${u.name} ${u.length}×${u.width} mm ×${u.quantity} — ${u.reason}`,
+        15,
+        fy,
+      );
+      fy += 5;
     }
   }
 
   // Etiquetas A4, quatro por fila. Uma etiqueta por peça física.
-  const labelRows = result.layouts.flatMap(layout => layout.placements.map(p => ({ layout, p, part: project.parts.find(x => x.id === p.partId) })));
+  const labelRows = result.layouts.flatMap((layout) =>
+    layout.placements.map((p) => ({
+      layout,
+      p,
+      part: project.parts.find((x) => x.id === p.partId),
+    })),
+  );
   if (labelRows.length) {
     doc.addPage("a4", "portrait");
     frame(doc, project, doc.getNumberOfPages(), 0);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("ETIQUETAS DE PEÇAS", 12, 24);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text("Recortar pelas linhas tracejadas e colar em cada peça.", 12, 30);
-    const lw=91, lh=47, startY=36;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text("ETIQUETAS DE PEÇAS", 12, 24);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Recortar pelas linhas tracejadas e colar em cada peça.", 12, 30);
+    const lw = 91,
+      lh = 47,
+      startY = 36;
     labelRows.forEach((row, idx) => {
-      const col=idx%2, line=Math.floor(idx/2)%5, pageBlock=Math.floor(idx/10);
-      if (idx>0 && idx%10===0) { doc.addPage("a4","portrait"); frame(doc,project,doc.getNumberOfPages(),0); doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.text("ETIQUETAS DE PEÇAS (continuação)",12,24); }
-      const x=10+col*99, y=36+line*51;
-      doc.setLineDashPattern([2,2],0); doc.setDrawColor(120); doc.rect(x,y,lw,lh); doc.setLineDashPattern([],0);
-      doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.text(row.p.partId,x+5,y+9);
-      doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.text((row.p.name||"Peça").slice(0,30),x+5,y+16);
-      doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.text(`${Math.round(row.p.w)} × ${Math.round(row.p.h)} mm`,x+5,y+27);
-      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.text(`${row.part?.material ?? row.layout.material} · Chapa ${row.layout.index} · ${row.p.rotated ? "Rot. 90°" : "Rot. 0°"}`,x+5,y+35);
-      doc.text(`Fita: ${row.part?.edgeBanding || "—"} · Corte ${idx+1}`,x+5,y+42);
+      const col = idx % 2,
+        line = Math.floor(idx / 2) % 5,
+        pageBlock = Math.floor(idx / 10);
+      if (idx > 0 && idx % 10 === 0) {
+        doc.addPage("a4", "portrait");
+        frame(doc, project, doc.getNumberOfPages(), 0);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(15);
+        doc.text("ETIQUETAS DE PEÇAS (continuação)", 12, 24);
+      }
+      const x = 10 + col * 99,
+        y = 36 + line * 51;
+      doc.setLineDashPattern([2, 2], 0);
+      doc.setDrawColor(120);
+      doc.rect(x, y, lw, lh);
+      doc.setLineDashPattern([], 0);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text(row.p.partId, x + 5, y + 9);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text((row.p.name || "Peça").slice(0, 30), x + 5, y + 16);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text(`${Math.round(row.p.w)} × ${Math.round(row.p.h)} mm`, x + 5, y + 27);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.text(
+        `${row.part?.material ?? row.layout.material} · Chapa ${row.layout.index} · ${row.p.rotated ? "Rot. 90°" : "Rot. 0°"}`,
+        x + 5,
+        y + 35,
+      );
+      doc.text(`Fita: ${row.part?.edgeBanding || "—"} · Corte ${idx + 1}`, x + 5, y + 42);
     });
   }
 

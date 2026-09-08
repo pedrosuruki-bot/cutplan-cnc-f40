@@ -27,18 +27,25 @@ function toNumber(value: unknown): number {
 
 export const scanMeasurementsPhoto = createServerFn({ method: "POST" })
   .inputValidator((input: { imageDataUrl: string }) => {
-    if (!input || typeof input.imageDataUrl !== "string" || !input.imageDataUrl.startsWith("data:image/")) {
+    if (
+      !input ||
+      typeof input.imageDataUrl !== "string" ||
+      !input.imageDataUrl.startsWith("data:image/")
+    ) {
       throw new Error("Imagem inválida");
     }
     return input;
   })
   .handler(async ({ data }): Promise<{ parts: ScannedPart[] }> => {
-    if (data.imageDataUrl.length > MAX_IMAGE_CHARS) throw new Error("Imagem demasiado grande. Tira uma foto mais simples.");
+    if (data.imageDataUrl.length > MAX_IMAGE_CHARS)
+      throw new Error("Imagem demasiado grande. Tira uma foto mais simples.");
     const comma = data.imageDataUrl.indexOf(",");
     const header = comma > 0 ? data.imageDataUrl.slice(0, comma).toLowerCase() : "";
-    if (!/^data:image\/(jpeg|jpg|png|webp);base64$/.test(header)) throw new Error("Formato de imagem não suportado.");
+    if (!/^data:image\/(jpeg|jpg|png|webp);base64$/.test(header))
+      throw new Error("Formato de imagem não suportado.");
     const requestKey = "global";
-    const now = Date.now(); const previous = recentRequests.get(requestKey) ?? 0;
+    const now = Date.now();
+    const previous = recentRequests.get(requestKey) ?? 0;
     if (now - previous < 5000) throw new Error("Espera alguns segundos antes de ler outra foto.");
     recentRequests.set(requestKey, now);
     for (const [k, t] of recentRequests) if (now - t > 60_000) recentRequests.delete(k);
@@ -83,7 +90,9 @@ export const scanMeasurementsPhoto = createServerFn({ method: "POST" })
       throw new Error("Não consegui perceber as medidas da foto");
     }
 
-    const parts: ScannedPart[] = (Array.isArray(parsed.parts) ? parsed.parts.slice(0, MAX_PARTS) : [])
+    const parts: ScannedPart[] = (
+      Array.isArray(parsed.parts) ? parsed.parts.slice(0, MAX_PARTS) : []
+    )
       .map((raw) => {
         const p = raw as Record<string, unknown>;
         const a = Math.round(toNumber(p["length"]));

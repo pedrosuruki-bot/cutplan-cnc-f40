@@ -28,8 +28,16 @@ export const Route = createFileRoute("/")({
 });
 
 function ProjectPage() {
-  const { project, result, updateInfo, newProject, loadDemo, restoreSaved, hasSaved, replaceProject } =
-    useProject();
+  const {
+    project,
+    result,
+    updateInfo,
+    newProject,
+    loadDemo,
+    restoreSaved,
+    hasSaved,
+    replaceProject,
+  } = useProject();
   const importRef = useRef<HTMLInputElement>(null);
 
   const totalParts = project.parts.reduce((s, p) => s + p.quantity, 0);
@@ -74,16 +82,36 @@ function ProjectPage() {
         </button>
       </div>
 
-      <Panel title="Backup e transferência" description="Guarda o projeto completo num ficheiro .cutplan.json. É a forma mais segura de levar um trabalho para outro computador ou fazer uma cópia antes de alterações grandes.">
+      <Panel
+        title="Backup e transferência"
+        description="Guarda o projeto completo num ficheiro .cutplan.json. É a forma mais segura de levar um trabalho para outro computador ou fazer uma cópia antes de alterações grandes."
+      >
         <div className="flex flex-wrap gap-2">
-          <button className={btn} onClick={() => exportProjectJson(project)}><Download className="h-4 w-4" /> Exportar projeto</button>
-          <button className={btn} onClick={() => importRef.current?.click()}><FileUp className="h-4 w-4" /> Importar projeto</button>
-          <input ref={importRef} type="file" accept=".json,.cutplan.json,application/json" className="hidden" onChange={async (e) => {
-            const file = e.target.files?.[0]; if (!file) return;
-            try { const imported = await importProjectJson(file); replaceProject(imported); toast.success("Projeto importado. Otimiza novamente antes de cortar."); }
-            catch (error) { toast.error(error instanceof Error ? error.message : "Ficheiro inválido."); }
-            finally { e.currentTarget.value = ""; }
-          }} />
+          <button className={btn} onClick={() => exportProjectJson(project)}>
+            <Download className="h-4 w-4" /> Exportar projeto
+          </button>
+          <button className={btn} onClick={() => importRef.current?.click()}>
+            <FileUp className="h-4 w-4" /> Importar projeto
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept=".json,.cutplan.json,application/json"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const imported = await importProjectJson(file);
+                replaceProject(imported);
+                toast.success("Projeto importado. Otimiza novamente antes de cortar.");
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Ficheiro inválido.");
+              } finally {
+                e.currentTarget.value = "";
+              }
+            }}
+          />
         </div>
       </Panel>
 

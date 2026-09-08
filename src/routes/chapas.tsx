@@ -45,12 +45,30 @@ function SheetsPage() {
   const totalArea = sheets.reduce((s, x) => s + x.length * x.width * x.quantity, 0);
 
   const addPreset = (length: number, width: number, thickness: number, material: string) => {
-    const same = sheets.find((s) => s.length === length && s.width === width && s.thickness === thickness && s.material === material);
+    const same = sheets.find(
+      (s) =>
+        s.length === length &&
+        s.width === width &&
+        s.thickness === thickness &&
+        s.material === material,
+    );
     if (same) {
       update(same.id, { quantity: same.quantity + 1 });
       return;
     }
-    setSheets([...sheets, { ...newSheet(), id: crypto.randomUUID(), name: material, material, length, width, thickness, quantity: 1 }]);
+    setSheets([
+      ...sheets,
+      {
+        ...newSheet(),
+        id: crypto.randomUUID(),
+        name: material,
+        material,
+        length,
+        width,
+        thickness,
+        quantity: 1,
+      },
+    ]);
   };
 
   return (
@@ -65,20 +83,149 @@ function SheetsPage() {
         }
       />
 
-      <Panel title="Atalhos de chapa" description="Adiciona rapidamente formatos usados na oficina.">
+      <Panel
+        title="Atalhos de chapa"
+        description="Adiciona rapidamente formatos usados na oficina."
+      >
         <div className="flex flex-wrap gap-2">
-          <button className={btn} onClick={() => addPreset(2800, 2070, 18, "MDF Branco 18")}><Zap className="h-4 w-4" /> MDF 2800×2070×18</button>
-          <button className={btn} onClick={() => addPreset(2750, 1830, 18, "MDF 18")}><Zap className="h-4 w-4" /> MDF 2750×1830×18</button>
-          <button className={btn} onClick={() => addPreset(2440, 1220, 18, "MDF 18")}><Zap className="h-4 w-4" /> MDF 2440×1220×18</button>
+          <button className={btn} onClick={() => addPreset(2800, 2070, 18, "MDF Branco 18")}>
+            <Zap className="h-4 w-4" /> MDF 2800×2070×18
+          </button>
+          <button className={btn} onClick={() => addPreset(2750, 1830, 18, "MDF 18")}>
+            <Zap className="h-4 w-4" /> MDF 2750×1830×18
+          </button>
+          <button className={btn} onClick={() => addPreset(2440, 1220, 18, "MDF 18")}>
+            <Zap className="h-4 w-4" /> MDF 2440×1220×18
+          </button>
         </div>
       </Panel>
 
-      <Panel title="Stock de sobras" description="Guarda sobras reais para o otimizador tentar usar antes de abrir uma chapa nova.">
+      <Panel
+        title="Stock de sobras"
+        description="Guarda sobras reais para o otimizador tentar usar antes de abrir uma chapa nova."
+      >
         <div className="mb-3 flex flex-wrap gap-2">
-          <button className={btn} onClick={() => setProject((p) => ({ ...p, offcutStock: [...p.offcutStock, { id: crypto.randomUUID(), name: `Sobra ${p.offcutStock.length + 1}`, material: p.sheets[0]?.material ?? "MDF 18", length: 1000, width: 400, thickness: p.sheets[0]?.thickness ?? 18, quantity: 1, price: 0 }] }))}><Plus className="h-4 w-4" /> Adicionar sobra</button>
-          <label className="inline-flex items-center gap-2 rounded-lg border px-3 text-sm"><input type="checkbox" checked={project.parameters.useOffcutStock !== false} onChange={(e) => setProject((p) => ({ ...p, parameters: { ...p.parameters, useOffcutStock: e.target.checked } }))} /> Usar sobras na otimização</label>
+          <button
+            className={btn}
+            onClick={() =>
+              setProject((p) => ({
+                ...p,
+                offcutStock: [
+                  ...p.offcutStock,
+                  {
+                    id: crypto.randomUUID(),
+                    name: `Sobra ${p.offcutStock.length + 1}`,
+                    material: p.sheets[0]?.material ?? "MDF 18",
+                    length: 1000,
+                    width: 400,
+                    thickness: p.sheets[0]?.thickness ?? 18,
+                    quantity: 1,
+                    price: 0,
+                  },
+                ],
+              }))
+            }
+          >
+            <Plus className="h-4 w-4" /> Adicionar sobra
+          </button>
+          <label className="inline-flex items-center gap-2 rounded-lg border px-3 text-sm">
+            <input
+              type="checkbox"
+              checked={project.parameters.useOffcutStock !== false}
+              onChange={(e) =>
+                setProject((p) => ({
+                  ...p,
+                  parameters: { ...p.parameters, useOffcutStock: e.target.checked },
+                }))
+              }
+            />{" "}
+            Usar sobras na otimização
+          </label>
         </div>
-        {project.offcutStock.length ? <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-xs uppercase text-muted-foreground"><th className="py-2 pr-3">Nome</th><th className="py-2 pr-3">Material</th><th className="py-2 pr-3">Compr.</th><th className="py-2 pr-3">Larg.</th><th className="py-2 pr-3">Esp.</th><th className="py-2 pr-3">Qtd</th><th /></tr></thead><tbody>{project.offcutStock.map((o) => <tr key={o.id} className="border-b border-border/60"><td className="py-2 pr-3"><input className={inputClass} value={o.name} onChange={(e)=>setProject(p=>({...p,offcutStock:p.offcutStock.map(x=>x.id===o.id?{...x,name:e.target.value}:x)}))}/></td><td className="py-2 pr-3"><input className={inputClass} value={o.material} onChange={(e)=>setProject(p=>({...p,offcutStock:p.offcutStock.map(x=>x.id===o.id?{...x,material:e.target.value}:x)}))}/></td>{(["length","width","thickness","quantity"] as const).map(k=><td className="py-2 pr-3" key={k}><input type="number" min={0} className={cn(inputClass,"w-24")} value={o[k]} onChange={(e)=>setProject(p=>({...p,offcutStock:p.offcutStock.map(x=>x.id===o.id?{...x,[k]:Number(e.target.value)}:x)}))}/></td>)}<td><button className={cn(btn,"h-9 w-9 p-0 text-destructive")} onClick={()=>setProject(p=>({...p,offcutStock:p.offcutStock.filter(x=>x.id!==o.id)}))}><Trash2 className="h-4 w-4"/></button></td></tr>)}</tbody></table></div> : <p className="text-sm text-muted-foreground">Nenhuma sobra registada.</p>}
+        {project.offcutStock.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                  <th className="py-2 pr-3">Nome</th>
+                  <th className="py-2 pr-3">Material</th>
+                  <th className="py-2 pr-3">Compr.</th>
+                  <th className="py-2 pr-3">Larg.</th>
+                  <th className="py-2 pr-3">Esp.</th>
+                  <th className="py-2 pr-3">Qtd</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {project.offcutStock.map((o) => (
+                  <tr key={o.id} className="border-b border-border/60">
+                    <td className="py-2 pr-3">
+                      <input
+                        className={inputClass}
+                        value={o.name}
+                        onChange={(e) =>
+                          setProject((p) => ({
+                            ...p,
+                            offcutStock: p.offcutStock.map((x) =>
+                              x.id === o.id ? { ...x, name: e.target.value } : x,
+                            ),
+                          }))
+                        }
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <input
+                        className={inputClass}
+                        value={o.material}
+                        onChange={(e) =>
+                          setProject((p) => ({
+                            ...p,
+                            offcutStock: p.offcutStock.map((x) =>
+                              x.id === o.id ? { ...x, material: e.target.value } : x,
+                            ),
+                          }))
+                        }
+                      />
+                    </td>
+                    {(["length", "width", "thickness", "quantity"] as const).map((k) => (
+                      <td className="py-2 pr-3" key={k}>
+                        <input
+                          type="number"
+                          min={0}
+                          className={cn(inputClass, "w-24")}
+                          value={o[k]}
+                          onChange={(e) =>
+                            setProject((p) => ({
+                              ...p,
+                              offcutStock: p.offcutStock.map((x) =>
+                                x.id === o.id ? { ...x, [k]: Number(e.target.value) } : x,
+                              ),
+                            }))
+                          }
+                        />
+                      </td>
+                    ))}
+                    <td>
+                      <button
+                        className={cn(btn, "h-9 w-9 p-0 text-destructive")}
+                        onClick={() =>
+                          setProject((p) => ({
+                            ...p,
+                            offcutStock: p.offcutStock.filter((x) => x.id !== o.id),
+                          }))
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Nenhuma sobra registada.</p>
+        )}
       </Panel>
 
       {sheets.length === 0 ? (

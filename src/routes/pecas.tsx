@@ -33,7 +33,15 @@ function nextId(parts: Part[]): string {
   while (used.has(`P${String(n).padStart(3, "0")}`)) n++;
   return `P${String(n).padStart(3, "0")}`;
 }
-function nextUniqueId(used: Set<string>): string { let n = 1; let id = `P${String(n).padStart(3, "0")}`; while (used.has(id)) { n++; id = `P${String(n).padStart(3, "0")}`; } return id; }
+function nextUniqueId(used: Set<string>): string {
+  let n = 1;
+  let id = `P${String(n).padStart(3, "0")}`;
+  while (used.has(id)) {
+    n++;
+    id = `P${String(n).padStart(3, "0")}`;
+  }
+  return id;
+}
 
 function makePart(parts: Part[], material: string, over: Partial<Part> = {}): Part {
   return {
@@ -182,7 +190,16 @@ function PartsPage() {
   const totalArea = parts.reduce((s, p) => s + p.length * p.width * p.quantity, 0);
   const missingMaterials = Array.from(
     new Set(
-      parts.map((p) => p.material).filter((m) => !project.sheets.some((s) => s.material.trim().replace(/\s+/g, " ").toLocaleLowerCase() === m.trim().replace(/\s+/g, " ").toLocaleLowerCase())),
+      parts
+        .map((p) => p.material)
+        .filter(
+          (m) =>
+            !project.sheets.some(
+              (s) =>
+                s.material.trim().replace(/\s+/g, " ").toLocaleLowerCase() ===
+                m.trim().replace(/\s+/g, " ").toLocaleLowerCase(),
+            ),
+        ),
     ),
   );
 
@@ -199,12 +216,39 @@ function PartsPage() {
             <button className={btn} onClick={() => setAdvanced((a) => !a)}>
               {advanced ? "Ocultar avançado" : "Mostrar avançado"}
             </button>
-            <button className={btn} onClick={() => csvRef.current?.click()}><FileUp className="h-4 w-4" /> Importar CSV</button>
-            <button className={btn} onClick={() => { const blob=new Blob([partsCsvTemplate()],{type:"text/csv;charset=utf-8"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="cutplan-pecas-modelo.csv"; a.click(); URL.revokeObjectURL(url); }}><Download className="h-4 w-4" /> Modelo CSV</button>
-            <button className={btn} onClick={() => {
-              if (!parts.length || window.confirm("Apagar todas as peças deste projeto?")) setParts([]);
-            }} disabled={!parts.length}>Limpar</button>
-            <button className={btnPrimary} onClick={() => setParts([...parts, makePart(parts, material)])}><Plus className="h-4 w-4" /> Nova peça</button>
+            <button className={btn} onClick={() => csvRef.current?.click()}>
+              <FileUp className="h-4 w-4" /> Importar CSV
+            </button>
+            <button
+              className={btn}
+              onClick={() => {
+                const blob = new Blob([partsCsvTemplate()], { type: "text/csv;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "cutplan-pecas-modelo.csv";
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <Download className="h-4 w-4" /> Modelo CSV
+            </button>
+            <button
+              className={btn}
+              onClick={() => {
+                if (!parts.length || window.confirm("Apagar todas as peças deste projeto?"))
+                  setParts([]);
+              }}
+              disabled={!parts.length}
+            >
+              Limpar
+            </button>
+            <button
+              className={btnPrimary}
+              onClick={() => setParts([...parts, makePart(parts, material)])}
+            >
+              <Plus className="h-4 w-4" /> Nova peça
+            </button>
           </>
         }
       />
@@ -290,9 +334,35 @@ function PartsPage() {
           className="hidden"
           onChange={(e) => void onPhoto(e.target.files?.[0])}
         />
-        <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => { const file=e.target.files?.[0]; if(!file) return; try { const text=await file.text(); const imported=parsePartsCsv(text,material,(used)=>nextUniqueId(new Set([...used,...parts.map(p=>p.id)]))); if(!imported.length) toast.error("O CSV não contém linhas válidas."); else { setParts([...parts,...imported]); toast.success(`${imported.length} peça(s) importada(s) do CSV`); } } catch { toast.error("Não foi possível ler o CSV."); } finally { e.currentTarget.value=""; } }} />
+        <input
+          ref={csvRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+              const text = await file.text();
+              const imported = parsePartsCsv(text, material, (used) =>
+                nextUniqueId(new Set([...used, ...parts.map((p) => p.id)])),
+              );
+              if (!imported.length) toast.error("O CSV não contém linhas válidas.");
+              else {
+                setParts([...parts, ...imported]);
+                toast.success(`${imported.length} peça(s) importada(s) do CSV`);
+              }
+            } catch {
+              toast.error("Não foi possível ler o CSV.");
+            } finally {
+              e.currentTarget.value = "";
+            }
+          }}
+        />
         <p className="mt-2 text-xs text-muted-foreground">
-          Também podes colar uma lista do Excel no campo Comprimento. Para a foto, usa uma folha plana, boa luz e números legíveis. A leitura por IA é assistida: confirma sempre as medidas antes de cortar.
+          Também podes colar uma lista do Excel no campo Comprimento. Para a foto, usa uma folha
+          plana, boa luz e números legíveis. A leitura por IA é assistida: confirma sempre as
+          medidas antes de cortar.
         </p>
       </Panel>
 
@@ -333,7 +403,9 @@ function PartsPage() {
                   value={s.width}
                   onChange={(e) =>
                     setScanned(
-                      scanned.map((x, j) => (j === i ? { ...x, width: Number(e.target.value) } : x)),
+                      scanned.map((x, j) =>
+                        j === i ? { ...x, width: Number(e.target.value) } : x,
+                      ),
                     )
                   }
                 />
@@ -345,7 +417,9 @@ function PartsPage() {
                   onChange={(e) =>
                     setScanned(
                       scanned.map((x, j) =>
-                        j === i ? { ...x, quantity: Math.max(1, Math.round(Number(e.target.value) || 0)) } : x,
+                        j === i
+                          ? { ...x, quantity: Math.max(1, Math.round(Number(e.target.value) || 0)) }
+                          : x,
                       ),
                     )
                   }

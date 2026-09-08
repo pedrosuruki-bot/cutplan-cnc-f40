@@ -74,10 +74,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       const res = await runOptimize();
       if (!res) return;
       toast.success(
-      `${res.stats.sheetsUsed} chapa(s) · ${res.stats.usagePct.toFixed(1)}% aproveitamento${
-        res.unplaced.length ? ` · ${res.unplaced.length} peça(s) por colocar` : ""
-      }`,
-    );
+        `${res.stats.sheetsUsed} chapa(s) · ${res.stats.usagePct.toFixed(1)}% aproveitamento${
+          res.unplaced.length ? ` · ${res.unplaced.length} peça(s) por colocar` : ""
+        }`,
+      );
       navigate({ to: "/plano" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível otimizar o corte.");

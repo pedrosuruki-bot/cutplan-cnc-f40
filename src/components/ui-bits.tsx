@@ -12,7 +12,6 @@ export const PRESET_MATERIALS = [
   "CINZA ESCURO 16MM",
 ];
 
-
 export const inputClass =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm tabular-nums outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30";
 
@@ -171,4 +170,3 @@ export function MaterialInput({
     </>
   );
 }
-

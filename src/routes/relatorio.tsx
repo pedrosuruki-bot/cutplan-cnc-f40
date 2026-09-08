@@ -55,9 +55,15 @@ function ReportPage() {
             <button className={btn} onClick={() => window.print()}>
               <Printer className="h-4 w-4" /> Imprimir
             </button>
-            <button className={btn} onClick={() => exportLayoutSvg(project, result)}><FileType2 className="h-4 w-4" /> SVG</button>
-            <button className={btn} onClick={() => exportLayoutDxf(project, result)}><FileCode2 className="h-4 w-4" /> DXF</button>
-            <button className={btnPrimary} onClick={() => exportProjectPdf(project, result)}><Download className="h-4 w-4" /> Exportar PDF</button>
+            <button className={btn} onClick={() => exportLayoutSvg(project, result)}>
+              <FileType2 className="h-4 w-4" /> SVG
+            </button>
+            <button className={btn} onClick={() => exportLayoutDxf(project, result)}>
+              <FileCode2 className="h-4 w-4" /> DXF
+            </button>
+            <button className={btnPrimary} onClick={() => exportProjectPdf(project, result)}>
+              <Download className="h-4 w-4" /> Exportar PDF
+            </button>
           </>
         }
       />

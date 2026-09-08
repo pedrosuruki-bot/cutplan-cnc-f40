@@ -15,7 +15,14 @@ interface Props {
   onSelect?: (partId: string | null) => void;
 }
 
-export function SheetPlanView({ layout, showDimensions, selectedPartId, onSelect, editable = false, onMove }: Props) {
+export function SheetPlanView({
+  layout,
+  showDimensions,
+  selectedPartId,
+  onSelect,
+  editable = false,
+  onMove,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -161,20 +168,50 @@ export function SheetPlanView({ layout, showDimensions, selectedPartId, onSelect
                   onPointerDown={(e) => {
                     if (!editable || !onMove || !svgRef.current) return;
                     e.stopPropagation();
-                    const pt = svgRef.current.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY;
-                    const local=pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
-                    if(local) { dragPieceRef.current={key,dx:local.x-p.x,dy:local.y-p.y}; e.currentTarget.setPointerCapture(e.pointerId); }
+                    const pt = svgRef.current.createSVGPoint();
+                    pt.x = e.clientX;
+                    pt.y = e.clientY;
+                    const local = pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
+                    if (local) {
+                      dragPieceRef.current = { key, dx: local.x - p.x, dy: local.y - p.y };
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    }
                   }}
                   onPointerMove={(e) => {
-                    if (!editable || !onMove || dragPieceRef.current?.key !== key || !svgRef.current) return;
-                    const pt=svgRef.current.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY; const local=pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
-                    if(local) { e.currentTarget.setAttribute("transform", `translate(${local.x-dragPieceRef.current.dx-p.x} ${local.y-dragPieceRef.current.dy-p.y})`); }
+                    if (
+                      !editable ||
+                      !onMove ||
+                      dragPieceRef.current?.key !== key ||
+                      !svgRef.current
+                    )
+                      return;
+                    const pt = svgRef.current.createSVGPoint();
+                    pt.x = e.clientX;
+                    pt.y = e.clientY;
+                    const local = pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
+                    if (local) {
+                      e.currentTarget.setAttribute(
+                        "transform",
+                        `translate(${local.x - dragPieceRef.current.dx - p.x} ${local.y - dragPieceRef.current.dy - p.y})`,
+                      );
+                    }
                   }}
                   onPointerUp={(e) => {
-                    if (!editable || !onMove || dragPieceRef.current?.key !== key || !svgRef.current) return;
-                    const pt=svgRef.current.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY; const local=pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
-                    const d=dragPieceRef.current; dragPieceRef.current=null; e.currentTarget.removeAttribute("transform");
-                    if(local && !onMove(key, local.x-d.dx, local.y-d.dy)) onSelect?.(p.partId);
+                    if (
+                      !editable ||
+                      !onMove ||
+                      dragPieceRef.current?.key !== key ||
+                      !svgRef.current
+                    )
+                      return;
+                    const pt = svgRef.current.createSVGPoint();
+                    pt.x = e.clientX;
+                    pt.y = e.clientY;
+                    const local = pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
+                    const d = dragPieceRef.current;
+                    dragPieceRef.current = null;
+                    e.currentTarget.removeAttribute("transform");
+                    if (local && !onMove(key, local.x - d.dx, local.y - d.dy)) onSelect?.(p.partId);
                   }}
                   style={{ cursor: editable ? "grab" : "pointer" }}
                 >

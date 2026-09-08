@@ -35,17 +35,46 @@ function csvEscape(value: string | number): string {
 
 function downloadCutList(project: Project, result: OptimizationResult): void {
   const byId = new Map(project.parts.map((p) => [p.id, p]));
-  const header = ["Ordem", "Chapa", "ID", "Nome", "Comprimento mm", "Largura mm", "Rotação", "Material", "Fita de bordo", "Notas"];
-  const rows = result.layouts.flatMap((layout) => layout.placements.map((p, i) => {
-    const part = byId.get(p.partId);
-    return [i + 1, layout.index, p.partId, p.name, Math.round(p.w), Math.round(p.h), p.rotated ? "90°" : "0°", part?.material ?? layout.material, part?.edgeBanding ?? "", part?.notes ?? ""];
-  }));
+  const header = [
+    "Ordem",
+    "Chapa",
+    "ID",
+    "Nome",
+    "Comprimento mm",
+    "Largura mm",
+    "Rotação",
+    "Material",
+    "Fita de bordo",
+    "Notas",
+  ];
+  const rows = result.layouts.flatMap((layout) =>
+    layout.placements.map((p, i) => {
+      const part = byId.get(p.partId);
+      return [
+        i + 1,
+        layout.index,
+        p.partId,
+        p.name,
+        Math.round(p.w),
+        Math.round(p.h),
+        p.rotated ? "90°" : "0°",
+        part?.material ?? layout.material,
+        part?.edgeBanding ?? "",
+        part?.notes ?? "",
+      ];
+    }),
+  );
   const csv = [header, ...rows].map((row) => row.map(csvEscape).join(";")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${project.name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "cutplan"}-lista-corte.csv`;
+  a.download = `${
+    project.name
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase() || "cutplan"
+  }-lista-corte.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 500);
 }
@@ -58,18 +87,34 @@ function PlanPage() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   useEffect(() => {
     try {
-      setChecked(JSON.parse(window.localStorage.getItem(`cutplan.checked.${project.id}`) ?? "{}") as Record<string, boolean>);
+      setChecked(
+        JSON.parse(window.localStorage.getItem(`cutplan.checked.${project.id}`) ?? "{}") as Record<
+          string,
+          boolean
+        >,
+      );
     } catch {
       setChecked({});
     }
   }, [project.id]);
-  const cutRows = useMemo(() => result.layouts.flatMap((l) => l.placements.map((p) => ({ ...p, sheetIndex: l.index }))), [result]);
-  const checkedCount = cutRows.reduce((n, p) => n + (checked[`${p.partId}:${p.instance}:${p.sheetIndex}`] ? 1 : 0), 0);
-  const toggleChecked = (key: string) => setChecked((prev) => {
-    const next = { ...prev, [key]: !prev[key] };
-    try { localStorage.setItem(`cutplan.checked.${project.id}`, JSON.stringify(next)); } catch {}
-    return next;
-  });
+  const cutRows = useMemo(
+    () => result.layouts.flatMap((l) => l.placements.map((p) => ({ ...p, sheetIndex: l.index }))),
+    [result],
+  );
+  const checkedCount = cutRows.reduce(
+    (n, p) => n + (checked[`${p.partId}:${p.instance}:${p.sheetIndex}`] ? 1 : 0),
+    0,
+  );
+  const toggleChecked = (key: string) =>
+    setChecked((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(`cutplan.checked.${project.id}`, JSON.stringify(next));
+      } catch {
+        /* Ignore local checklist persistence errors. */
+      }
+      return next;
+    });
 
   if (!result || result.layouts.length === 0) {
     return (
@@ -98,9 +143,15 @@ function PlanPage() {
         subtitle={`${result.stats.sheetsUsed} chapa(s) · ${result.stats.partsPlaced}/${result.stats.partsTotal} peças colocadas · sequência de referência para a serra; confirma a ordem na F40 antes do corte. Ajustes manuais ficam assinalados`}
         actions={
           <>
-            <button className={btn} onClick={() => setShowDims((s) => !s)}>{showDims ? "Ocultar dimensões" : "Mostrar dimensões"}</button>
-            <button className={btn} onClick={() => downloadCutList(project, result)}><Download className="h-4 w-4" /> Lista CSV</button>
-            <button className={btn} onClick={() => window.print()}><Printer className="h-4 w-4" /> Imprimir</button>
+            <button className={btn} onClick={() => setShowDims((s) => !s)}>
+              {showDims ? "Ocultar dimensões" : "Mostrar dimensões"}
+            </button>
+            <button className={btn} onClick={() => downloadCutList(project, result)}>
+              <Download className="h-4 w-4" /> Lista CSV
+            </button>
+            <button className={btn} onClick={() => window.print()}>
+              <Printer className="h-4 w-4" /> Imprimir
+            </button>
           </>
         }
       />
@@ -130,8 +181,12 @@ function PlanPage() {
               )}
             >
               <p className="font-semibold">Chapa {l.index}</p>
-              <p className="text-muted-foreground">{pct(l.usagePct)} · {l.placements.length} peças</p>
-              <p className="text-[11px] text-muted-foreground">{l.manual ? "Manual" : "Guilhotina"}</p>
+              <p className="text-muted-foreground">
+                {pct(l.usagePct)} · {l.placements.length} peças
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {l.manual ? "Manual" : "Guilhotina"}
+              </p>
             </button>
           ))}
         </div>
@@ -146,7 +201,8 @@ function PlanPage() {
             onMove={(key, x, y) => movePlacement(index, key, x, y)}
           />
           <div className="rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground">
-            <Move className="mr-1 inline h-3.5 w-3.5" /> Arrasta uma peça para ajustar manualmente. O sistema recusa sobreposições, margens e espaçamentos inválidos.
+            <Move className="mr-1 inline h-3.5 w-3.5" /> Arrasta uma peça para ajustar manualmente.
+            O sistema recusa sobreposições, margens e espaçamentos inválidos.
           </div>
 
           {detail ? (
@@ -193,7 +249,8 @@ function PlanPage() {
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                 <th className="py-2 pr-3 font-medium">#</th>
-                <th className="py-2 pr-3 font-medium">Fase</th><th className="py-2 pr-3 font-medium">Tipo</th>
+                <th className="py-2 pr-3 font-medium">Fase</th>
+                <th className="py-2 pr-3 font-medium">Tipo</th>
                 <th className="py-2 pr-3 font-medium">Posição (mm)</th>
                 <th className="py-2 pr-3 font-medium">Descrição</th>
               </tr>
@@ -202,8 +259,16 @@ function PlanPage() {
               {layout.cuts.map((c) => (
                 <tr key={c.order} className="border-b border-border/60">
                   <td className="py-1.5 pr-3">{c.order}</td>
-                  <td className="py-1.5 pr-3">{c.phase === "rip" ? "Rasgo" : c.phase === "crosscut" ? "Esquadro" : "Acabamento"}</td>
-                  <td className="py-1.5 pr-3">{c.type === "horizontal" ? "Horizontal" : "Vertical"}</td>
+                  <td className="py-1.5 pr-3">
+                    {c.phase === "rip"
+                      ? "Rasgo"
+                      : c.phase === "crosscut"
+                        ? "Esquadro"
+                        : "Acabamento"}
+                  </td>
+                  <td className="py-1.5 pr-3">
+                    {c.type === "horizontal" ? "Horizontal" : "Vertical"}
+                  </td>
                   <td className="py-1.5 pr-3 tabular-nums">{c.position}</td>
                   <td className="py-1.5 pr-3 text-muted-foreground">{c.note}</td>
                 </tr>
@@ -213,12 +278,21 @@ function PlanPage() {
         </div>
       </Panel>
 
-      <Panel title={`Lista de corte · ${checkedCount}/${cutRows.length} conferidas`} description="Marca cada peça quando a tiveres cortado. O estado fica guardado neste projeto neste dispositivo.">
+      <Panel
+        title={`Lista de corte · ${checkedCount}/${cutRows.length} conferidas`}
+        description="Marca cada peça quando a tiveres cortado. O estado fica guardado neste projeto neste dispositivo."
+      >
         <div className="max-h-[520px] overflow-auto rounded-lg border border-border">
           <table className="w-full min-w-[850px] text-sm">
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-                <th className="w-12 p-2">✓</th><th className="p-2">Chapa</th><th className="p-2">ID</th><th className="p-2">Peça</th><th className="p-2">Medida</th><th className="p-2">Material</th><th className="p-2">Fita</th>
+                <th className="w-12 p-2">✓</th>
+                <th className="p-2">Chapa</th>
+                <th className="p-2">ID</th>
+                <th className="p-2">Peça</th>
+                <th className="p-2">Medida</th>
+                <th className="p-2">Material</th>
+                <th className="p-2">Fita</th>
               </tr>
             </thead>
             <tbody>
@@ -226,15 +300,33 @@ function PlanPage() {
                 const key = `${p.partId}:${p.instance}:${p.sheetIndex}`;
                 const part = project.parts.find((x) => x.id === p.partId);
                 const done = !!checked[key];
-                return <tr key={key} className={cn("border-b border-border/60", done && "opacity-55") }>
-                  <td className="p-2"><button className={cn(btn, "h-9 w-9 p-0", done && "bg-success text-success-foreground")} onClick={() => toggleChecked(key)} aria-label={done ? "Desmarcar" : "Marcar cortada"}>{done ? <Check className="h-4 w-4" /> : null}</button></td>
-                  <td className="p-2 tabular-nums">{p.sheetIndex}</td>
-                  <td className="p-2 font-mono font-semibold">{p.partId}</td>
-                  <td className="p-2">{p.name} <span className="text-xs text-muted-foreground">#{p.instance}</span></td>
-                  <td className="p-2 font-mono tabular-nums">{Math.round(p.w)} × {Math.round(p.h)} {p.rotated ? "↻" : ""}</td>
-                  <td className="p-2">{part?.material ?? ""}</td>
-                  <td className="p-2">{part?.edgeBanding || "—"}</td>
-                </tr>;
+                return (
+                  <tr key={key} className={cn("border-b border-border/60", done && "opacity-55")}>
+                    <td className="p-2">
+                      <button
+                        className={cn(
+                          btn,
+                          "h-9 w-9 p-0",
+                          done && "bg-success text-success-foreground",
+                        )}
+                        onClick={() => toggleChecked(key)}
+                        aria-label={done ? "Desmarcar" : "Marcar cortada"}
+                      >
+                        {done ? <Check className="h-4 w-4" /> : null}
+                      </button>
+                    </td>
+                    <td className="p-2 tabular-nums">{p.sheetIndex}</td>
+                    <td className="p-2 font-mono font-semibold">{p.partId}</td>
+                    <td className="p-2">
+                      {p.name} <span className="text-xs text-muted-foreground">#{p.instance}</span>
+                    </td>
+                    <td className="p-2 font-mono tabular-nums">
+                      {Math.round(p.w)} × {Math.round(p.h)} {p.rotated ? "↻" : ""}
+                    </td>
+                    <td className="p-2">{part?.material ?? ""}</td>
+                    <td className="p-2">{part?.edgeBanding || "—"}</td>
+                  </tr>
+                );
               })}
             </tbody>
           </table>

@@ -116,24 +116,62 @@ function OptimizePage() {
               />
             </Field>
             <Field label="Custo de corte (€/metro)">
-              <input type="number" step="0.1" min={0} className={inputClass} value={p.sheetCostPerCut} onChange={(e)=>setParameters({sheetCostPerCut:Number(e.target.value)})}/>
+              <input
+                type="number"
+                step="0.1"
+                min={0}
+                className={inputClass}
+                value={p.sheetCostPerCut}
+                onChange={(e) => setParameters({ sheetCostPerCut: Number(e.target.value) })}
+              />
             </Field>
             <Field label="Valor recuperável das sobras (%)">
-              <input type="number" step="1" min={0} max={100} className={inputClass} value={p.offcutCreditPct} onChange={(e)=>setParameters({offcutCreditPct:Number(e.target.value)})}/>
+              <input
+                type="number"
+                step="1"
+                min={0}
+                max={100}
+                className={inputClass}
+                value={p.offcutCreditPct}
+                onChange={(e) => setParameters({ offcutCreditPct: Number(e.target.value) })}
+              />
             </Field>
             <Field label="Usar stock de sobras">
-              <button className={cn(btn, "w-full justify-start")} onClick={() => setParameters({ useOffcutStock: !p.useOffcutStock })}>{p.useOffcutStock ? "Ativo — tentar sobras primeiro" : "Desativado"}</button>
+              <button
+                className={cn(btn, "w-full justify-start")}
+                onClick={() => setParameters({ useOffcutStock: !p.useOffcutStock })}
+              >
+                {p.useOffcutStock ? "Ativo — tentar sobras primeiro" : "Desativado"}
+              </button>
             </Field>
           </div>
         ) : null}
       </Panel>
 
-      <Panel title="Modo da máquina" description="Para a tua F40, usa o modo Altendorf: primeiro rasgos/faixas e depois cortes no esquadro. O plano evita layouts que dependam de encaixes impossíveis na serra." >
+      <Panel
+        title="Modo da máquina"
+        description="Para a tua F40, usa o modo Altendorf: primeiro rasgos/faixas e depois cortes no esquadro. O plano evita layouts que dependam de encaixes impossíveis na serra."
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           {(["altendorf-f40", "free-layout"] as SawMode[]).map((mode) => (
-            <button key={mode} onClick={() => setParameters({ sawMode: mode })} className={cn("rounded-xl border p-4 text-left", p.sawMode === mode ? "border-primary bg-accent" : "border-border bg-card hover:border-primary")}>
-              <p className="font-semibold">{mode === "altendorf-f40" ? "Altendorf F40 — Modo Corte" : "Layout livre"}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{mode === "altendorf-f40" ? "Planeia faixas e cortes sequenciais para executar manualmente." : "Mais liberdade geométrica, menos orientação de execução."}</p>
+            <button
+              key={mode}
+              onClick={() => setParameters({ sawMode: mode })}
+              className={cn(
+                "rounded-xl border p-4 text-left",
+                p.sawMode === mode
+                  ? "border-primary bg-accent"
+                  : "border-border bg-card hover:border-primary",
+              )}
+            >
+              <p className="font-semibold">
+                {mode === "altendorf-f40" ? "Altendorf F40 — Modo Corte" : "Layout livre"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {mode === "altendorf-f40"
+                  ? "Planeia faixas e cortes sequenciais para executar manualmente."
+                  : "Mais liberdade geométrica, menos orientação de execução."}
+              </p>
             </button>
           ))}
         </div>
