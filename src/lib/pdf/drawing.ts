@@ -15,6 +15,15 @@ function slug(project: Project): string {
   );
 }
 
+function fitTextSize(text: string, width: number, height: number, showPartIds: boolean): number {
+  const charWidth = showPartIds ? 0.48 : 0.5;
+  const lineHeight = showPartIds ? 2.1 : 1.2;
+  const lines = showPartIds ? 2 : 1;
+  const byWidth = width / Math.max(1, text.length * charWidth);
+  const byHeight = height / (lines * lineHeight);
+  return Math.max(3.2, Math.min(10, byWidth, byHeight));
+}
+
 function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -110,7 +119,12 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
       doc.setTextColor(90, 90, 90);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(6.5);
-      doc.text(`${Math.round(o.w)} × ${Math.round(o.h)}`, ox + (r.x + r.w / 2) * scale, oy + (r.y + r.h / 2) * scale + 2, { align: "center" });
+      doc.text(
+        `${Math.round(o.w)} × ${Math.round(o.h)}`,
+        ox + (r.x + r.w / 2) * scale,
+        oy + (r.y + r.h / 2) * scale + 2,
+        { align: "center" },
+      );
     }
   }
 
@@ -126,24 +140,36 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     doc.setLineWidth(0.22);
     doc.rect(x, y, w, h, "FD");
 
-    if (w > 17 && h > 10) {
-      const dimText = `${Math.round(p.w)} × ${Math.round(p.h)}`;
-      const fontSize = Math.max(6, Math.min(11, Math.min(w / (dimText.length * 0.48), h / 2.4)));
-      const centerX = x + w / 2;
-      const centerY = y + h / 2;
-      doc.setTextColor(20, 20, 20);
-      if (showPartIds) {
+    // Toda peça recebe a sua medida dentro do próprio retângulo.
+    // O tamanho da fonte adapta-se ao espaço disponível, mesmo nas peças estreitas.
+    const dimText = `${Math.round(p.w)} × ${Math.round(p.h)}`;
+    const fontSize = fitTextSize(dimText, w - 2, h - 2, showPartIds);
+    const centerX = x + w / 2;
+    const centerY = y + h / 2;
+    doc.setTextColor(20, 20, 20);
+
+    if (showPartIds) {
+      if (w >= 10 && h >= 6) {
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(Math.max(5.5, Math.min(8, fontSize)));
-        doc.text(p.partId, centerX, centerY - 1.5, { align: "center" });
+        doc.setFontSize(Math.max(3.2, Math.min(7, fontSize)));
+        doc.text(p.partId, centerX, centerY - Math.max(1.5, fontSize * 0.35), {
+          align: "center",
+        });
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(Math.max(5.5, fontSize - 0.5));
-        doc.text(dimText, centerX, centerY + 4, { align: "center" });
+        doc.setFontSize(Math.max(3.2, fontSize - 0.2));
+        doc.text(dimText, centerX, centerY + Math.max(1.5, fontSize * 0.45), {
+          align: "center",
+        });
       } else {
+        // Em peças muito pequenas, dá prioridade à medida, mantendo-a dentro da peça.
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(fontSize);
+        doc.setFontSize(Math.max(3.2, fontSize));
         doc.text(dimText, centerX, centerY + fontSize * 0.35, { align: "center" });
       }
+    } else {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(fontSize);
+      doc.text(dimText, centerX, centerY + fontSize * 0.35, { align: "center" });
     }
   }
 
@@ -174,7 +200,11 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   doc.setDrawColor(70, 70, 70);
 }
 
-export function exportSheetDrawingPdf(project: Project, result: OptimizationResult, showPartIds = true): void {
+export function exportSheetDrawingPdf(
+  project: Project,
+  result: OptimizationResult,
+  showPartIds = true,
+): void {
   if (!result.layouts.length) return;
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   result.layouts.forEach((layout, index) => {
