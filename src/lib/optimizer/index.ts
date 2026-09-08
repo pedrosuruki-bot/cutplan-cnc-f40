@@ -273,21 +273,27 @@ export function optimize(
         slots.map((slot) => ({ slot, packed: choosePacked(instances, slot.sheet, params) }));
       const offcutCandidates = evaluate(offcutAvailable);
       const usableOffcutCandidates = offcutCandidates.filter((c) => c.packed.placements.length > 0);
+      const purchasedCandidates = evaluate(purchasedAvailable);
+      const usablePurchasedCandidates = purchasedCandidates.filter(
+        (c) => c.packed.placements.length > 0,
+      );
       const candidates = usableOffcutCandidates.length
         ? usableOffcutCandidates
-        : evaluate(purchasedAvailable);
+        : usablePurchasedCandidates;
 
       if (!candidates.length) {
         for (const inst of instances) {
-          const sheet = (offcutAvailable[0] ?? purchasedAvailable[0])!.sheet;
-          const uw = sheet.length - 2 * Math.max(0, params.margin);
-          const uh = sheet.width - 2 * Math.max(0, params.margin);
-          const direct = inst.part.length <= uw && inst.part.width <= uh;
-          const rotated =
-            canRotatePart(inst.part, params) && inst.part.width <= uw && inst.part.length <= uh;
+          const canFitAny = available.some(({ sheet }) => {
+            const uw = sheet.length - 2 * Math.max(0, params.margin);
+            const uh = sheet.width - 2 * Math.max(0, params.margin);
+            const direct = inst.part.length <= uw && inst.part.width <= uh;
+            const rotated =
+              canRotatePart(inst.part, params) && inst.part.width <= uw && inst.part.length <= uh;
+            return direct || rotated;
+          });
           addUnplaced(
             inst.part,
-            direct || rotated ? "Não coube nas chapas disponíveis" : "Peça maior do que a chapa",
+            canFitAny ? "Não coube nas chapas disponíveis" : "Peça maior do que a chapa",
           );
         }
         break;

@@ -47,9 +47,9 @@ function assertNoOverlap(
       const overlapY = a.y < b.y + b.h - 1e-6 && b.y < a.y + a.h - 1e-6;
       expect(overlapX && overlapY).toBe(false);
       if (overlapY)
-        expect(Math.abs(a.x - b.x) - Math.min(a.w, b.w)).toBeGreaterThanOrEqual(gap - 1e-6);
+        expect(Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w))).toBeGreaterThanOrEqual(gap - 1e-6);
       if (overlapX)
-        expect(Math.abs(a.y - b.y) - Math.min(a.h, b.h)).toBeGreaterThanOrEqual(gap - 1e-6);
+        expect(Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h))).toBeGreaterThanOrEqual(gap - 1e-6);
     }
 }
 
