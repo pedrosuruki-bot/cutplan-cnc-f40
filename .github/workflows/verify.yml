@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -15,6 +18,20 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      - name: Format source
+        run: bunx prettier --write "src/**/*.{ts,tsx,css}" "package.json" "vite.config.ts"
+      - name: Commit formatting fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src package.json vite.config.ts
+          if git diff --cached --quiet; then
+            echo "No formatting changes needed."
+          else
+            git commit -m "Format CutPlan CNC source"
+            git push
+            exit 0
+          fi
       - run: bun run lint
       - run: bun run test
       - run: bun run build
