@@ -26,7 +26,7 @@ function toNumber(value: unknown): number {
 }
 
 export const scanMeasurementsPhoto = createServerFn({ method: "POST" })
-  .inputValidator((input: { imageDataUrl: string }) => {
+  .validator((input: { imageDataUrl: string }) => {
     if (
       !input ||
       typeof input.imageDataUrl !== "string" ||
