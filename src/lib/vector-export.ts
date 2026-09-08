@@ -2,7 +2,7 @@ import type { OptimizationResult, Project, Placement } from "@/types";
 import { colorForPart } from "@/lib/plan-colors";
 
 function escapeXml(v: string): string {
-  return v.replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  return v.replace(/[&<>\x22]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
 function download(blob: Blob, name: string) {
