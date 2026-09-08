@@ -15,70 +15,73 @@ function slug(project: Project): string {
   );
 }
 
-function drawPartMeasurement(
+function fitDimensionFont(
+  doc: jsPDF,
+  text: string,
+  maxWidthMm: number,
+  maxHeightMm: number,
+  maxPt = 8,
+  minPt = 2.2,
+): number {
+  doc.setFont("helvetica", "bold");
+  const maxAllowed = Math.min(maxPt, maxHeightMm / 0.3528 / 1.15);
+  let size = Math.min(maxAllowed, 8);
+
+  while (size > minPt) {
+    doc.setFontSize(size);
+    if (doc.getTextWidth(text) <= maxWidthMm) return size;
+    size -= 0.2;
+  }
+
+  return minPt;
+}
+
+function drawPieceDimensions(
   doc: jsPDF,
   x: number,
   y: number,
   w: number,
   h: number,
-  text: string,
 ): void {
-  const pad = 0.7;
-  const usableW = Math.max(1.2, w - pad * 2);
-  const usableH = Math.max(1.2, h - pad * 2);
+  // The PDF follows the CutList Optimizer style: the horizontal dimension
+  // is printed near the top inside the piece and the vertical dimension is
+  // printed rotated 90° near the left side. Both values are always present.
+  const pad = Math.max(0.8, Math.min(w, h) * 0.05);
+  const widthText = `${Math.round(w)}`;
+  const heightText = `${Math.round(h)}`;
   const centerX = x + w / 2;
   const centerY = y + h / 2;
-  const minPt = 1.8;
-  const maxPt = 9;
-  const mmPerPoint = 0.3528;
-  const averageGlyphMm = 0.5 * mmPerPoint;
-  const textHeightFactor = 1.25;
 
-  // First try horizontal text. The calculation uses the actual conversion
-  // from PDF points to millimetres, so the text cannot silently overflow.
-  const fitHorizontal = Math.min(
-    maxPt,
-    usableW / Math.max(1, text.length * averageGlyphMm),
-    usableH / (mmPerPoint * textHeightFactor),
+  const horizontalPt = fitDimensionFont(
+    doc,
+    widthText,
+    Math.max(1, w - pad * 2),
+    Math.max(1, Math.min(h * 0.24, 5)),
+    8,
+    2.1,
   );
-  if (fitHorizontal >= minPt) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(fitHorizontal);
-    doc.text(text, centerX, centerY + fitHorizontal * mmPerPoint * 0.35, {
-      align: "center",
-    });
-    return;
-  }
+  const verticalPt = fitDimensionFont(
+    doc,
+    heightText,
+    Math.max(1, h - pad * 2),
+    Math.max(1, Math.min(w * 0.24, 5)),
+    8,
+    2.1,
+  );
 
-  // For narrow pieces, rotate the complete measurement and use the longer side.
-  const fitVertical = Math.min(
-    maxPt,
-    usableH / Math.max(1, text.length * averageGlyphMm),
-    usableW / (mmPerPoint * textHeightFactor),
-  );
-  if (fitVertical >= minPt) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(fitVertical);
-    doc.text(text, centerX, centerY + fitVertical * mmPerPoint * 0.35, {
-      align: "center",
-      angle: 90,
-    });
-    return;
-  }
-
-  // Extremely small pieces: split the two dimensions so both values stay inside.
-  const [first, second = ""] = text.split("x");
-  const tinyPt = Math.max(
-    minPt,
-    Math.min(3.8, usableW / (mmPerPoint * 2.8), usableH / (mmPerPoint * 2.8)),
-  );
+  // Horizontal dimension, inside the upper part of the piece.
+  doc.setTextColor(20, 20, 20);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(tinyPt);
-  doc.text(first, centerX, centerY - tinyPt * mmPerPoint * 0.55, {
+  doc.setFontSize(horizontalPt);
+  doc.text(widthText, centerX, y + pad + horizontalPt * 0.3528, {
     align: "center",
   });
-  doc.text(`x${second}`, centerX, centerY + tinyPt * mmPerPoint * 0.95, {
+
+  // Vertical dimension, inside the left part of the piece.
+  doc.setFontSize(verticalPt);
+  doc.text(heightText, x + pad + verticalPt * 0.3528, centerY, {
     align: "center",
+    angle: 90,
   });
 }
 
@@ -101,11 +104,13 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   const ox = areaX + (areaW - drawW) / 2;
   const oy = top + (areaH - drawH) / 2;
 
-  const mapRect = (x: number, y: number, w: number, h: number) => ({
-    x: layout.width - (y + h),
-    y: x,
-    w: h,
-    h: w,
+  // Convert optimizer coordinates (length x width) to the workshop drawing
+  // orientation (width horizontal x length vertical), matching the reference.
+  const mapRect = (px: number, py: number, pw: number, ph: number) => ({
+    x: layout.width - (py + ph),
+    y: px,
+    w: ph,
+    h: pw,
   });
 
   doc.setTextColor(25, 25, 25);
@@ -198,17 +203,16 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
     doc.setLineWidth(0.22);
     doc.rect(x, y, w, h, "FD");
 
-    // Always print the dimensions inside the piece. The label adapts to the piece:
-    // horizontal when it fits, vertical for narrow pieces, split for very tiny ones.
-    const dimText = `${Math.round(p.w)}x${Math.round(p.h)}`;
-    drawPartMeasurement(doc, x, y, w, h, dimText);
+    // Dimensions are always shown as separate horizontal and vertical values,
+    // exactly like the workshop reference. Font size follows the piece size.
+    drawPieceDimensions(doc, x, y, w, h);
 
     if (showPartIds && w > 25 && h > 18) {
-      const idSize = Math.max(4.5, Math.min(7, Math.min(w / 18, h / 8)));
+      const idSize = Math.max(4.2, Math.min(6.5, Math.min(w / 18, h / 8)));
       doc.setFont("helvetica", "normal");
       doc.setFontSize(idSize);
       doc.setTextColor(35, 35, 35);
-      doc.text(p.partId, x + w / 2, y + h / 2 - 4, { align: "center" });
+      doc.text(p.partId, x + w / 2, y + h - idSize * 0.45, { align: "center" });
     }
   }
 
