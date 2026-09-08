@@ -31,12 +31,16 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex sm:flex-wrap sm:justify-between">
-      <div className="min-w-0">
-        <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>
-        {subtitle ? <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p> : null}
+    <header className="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+      <div className="min-w-0 flex-1">
+        <h1 className="break-words text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>
+        {subtitle ? <p className="mt-1 break-words text-sm text-muted-foreground">{subtitle}</p> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+          {actions}
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -55,19 +59,23 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={cn("rounded-xl border border-border bg-card shadow-sm", className)}>
+    <section className={cn("min-w-0 rounded-xl border border-border bg-card shadow-sm", className)}>
       {title ? (
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-4 py-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold">{title}</h2>
+        <div className="flex min-w-0 flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="break-words text-sm font-semibold">{title}</h2>
             {description ? (
-              <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+              <p className="mt-0.5 break-words text-xs text-muted-foreground">{description}</p>
             ) : null}
           </div>
-          {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          {actions ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+              {actions}
+            </div>
+          ) : null}
         </div>
       ) : null}
-      <div className="p-4">{children}</div>
+      <div className="min-w-0 p-4">{children}</div>
     </section>
   );
 }
@@ -84,9 +92,9 @@ export function Stat({
   progress?: number;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
+    <div className="min-w-0 rounded-xl border border-border bg-card p-4">
+      <p className="break-words text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 break-words text-2xl font-bold tabular-nums">{value}</p>
       {typeof progress === "number" ? (
         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
           <div
@@ -95,7 +103,7 @@ export function Stat({
           />
         </div>
       ) : null}
-      {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="mt-2 break-words text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -112,7 +120,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>
       {children}
       {error ? (
