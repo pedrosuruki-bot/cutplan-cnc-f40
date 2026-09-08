@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Download, FileCode2, FileType2, Printer } from "lucide-react";
 import { useProject } from "@/hooks/useProject";
 import { EmptyState, PageHeader, Panel, Stat, btn, btnPrimary } from "@/components/ui-bits";
-import { exportProjectDetailsPdf, exportSheetDrawingPdf } from "@/lib/pdf/split";
+import { exportProjectDetailsPdf } from "@/lib/pdf/split";
+import { exportSheetDrawingPdf } from "@/lib/pdf/drawing";
 import { eur, m2, num, pct } from "@/lib/format";
 import { exportLayoutDxf, exportLayoutSvg } from "@/lib/vector-export";
 
@@ -27,6 +29,7 @@ export const Route = createFileRoute("/relatorio")({
 
 function ReportPage() {
   const { project, result } = useProject();
+  const [showPartIds, setShowPartIds] = useState(true);
 
   if (!result) {
     return (
@@ -61,7 +64,7 @@ function ReportPage() {
             <button className={btn} onClick={() => exportLayoutDxf(project, result)}>
               <FileCode2 className="h-4 w-4" /> DXF
             </button>
-            <button className={btnPrimary} onClick={() => exportSheetDrawingPdf(project, result)}>
+            <button className={btnPrimary} onClick={() => exportSheetDrawingPdf(project, result, showPartIds)}>
               <Download className="h-4 w-4" /> PDF — Desenho das chapas
             </button>
             <button className={btn} onClick={() => exportProjectDetailsPdf(project, result)}>
@@ -70,6 +73,23 @@ function ReportPage() {
           </>
         }
       />
+
+      <Panel title="Opções do PDF — desenho das chapas">
+        <label className="flex cursor-pointer items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={showPartIds}
+            onChange={(event) => setShowPartIds(event.target.checked)}
+            className="h-4 w-4 rounded border-border accent-primary"
+          />
+          <span>
+            Mostrar identificação das peças
+            <span className="ml-2 text-xs text-muted-foreground">
+              Desligado = ficam apenas as medidas dentro das peças
+            </span>
+          </span>
+        </label>
+      </Panel>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Chapas usadas" value={num(result.stats.sheetsUsed)} />
