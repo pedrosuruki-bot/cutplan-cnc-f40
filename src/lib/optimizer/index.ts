@@ -8,6 +8,7 @@ import type {
   UnplacedPart,
   CutStep,
   Rect,
+  OffcutStock,
 } from "@/types";
 import { MaxRectsBin, type FitHeuristic, deriveFreeRects } from "./maxrects";
 import { GuillotineBin } from "./guillotine";
@@ -46,7 +47,7 @@ function sortInstances(list: Instance[], variant = 0): Instance[] {
   return copy;
 }
 
-function validateInputs(sheets: Sheet[], parts: Part[], p: CutParameters, offcutStock: import("@/types").OffcutStock[] = []): string[] {
+function validateInputs(sheets: Sheet[], parts: Part[], p: CutParameters, offcutStock: OffcutStock[] = []): string[] {
   const errors: string[] = [];
   if (!Number.isFinite(p.kerf) || p.kerf < 0) errors.push("Kerf inválido.");
   if (!Number.isFinite(p.margin) || p.margin < 0) errors.push("Margem inválida.");
@@ -111,7 +112,7 @@ function pack(
     placements.push({ partId: inst.part.id, instance: inst.instance, name: inst.part.name, x: placed.x + margin, y: placed.y + margin, w: placed.w, h: placed.h, rotated: placed.rotated });
   }
   cuts = strategy === "guillotine"
-    ? guillotine!.cuts.map((c, i) => ({ ...c, order: i + 1, position: c.position + (c.type === "vertical" ? margin : margin), from: c.from + margin, to: c.to + margin }))
+    ? guillotine!.cuts.map((c, i) => ({ ...c, order: i + 1, position: c.position + margin, from: c.from + margin, to: c.to + margin }))
     : buildCutSequence(placements, sheet.length, sheet.width);
   return { placements, remaining, cuts, strategy };
 }
@@ -131,7 +132,12 @@ function choosePacked(instances: Instance[], sheet: Sheet, params: CutParameters
   return candidates[0]!;
 }
 
-export function optimize(sheets: Sheet[], parts: Part[], params: CutParameters): OptimizationResult {
+export function optimize(
+  sheets: Sheet[],
+  parts: Part[],
+  params: CutParameters,
+  offcutStock: OffcutStock[] = [],
+): OptimizationResult {
   const errors = validateInputs(sheets, parts, params, offcutStock);
   if (errors.length) throw new Error(errors[0]);
 
@@ -156,12 +162,34 @@ export function optimize(sheets: Sheet[], parts: Part[], params: CutParameters):
     for (const part of materialParts) for (let i = 0; i < part.quantity; i++) instances.push({ part, instance: i + 1 });
 
     const materialSheets = sheets.filter((s) => normalizeMaterial(s.material) === material && s.quantity > 0);
-    if (!materialSheets.length) {
+    const materialOffcuts = params.useOffcutStock
+      ? offcutStock.filter((o) => normalizeMaterial(o.material) === material && o.quantity > 0)
+      : [];
+
+    const offcutSheets = materialOffcuts.flatMap((o) =>
+      Array.from({ length: o.quantity }, (_, i) => ({
+        sheet: {
+          id: `offcut:${o.id}:${i + 1}`,
+          name: `${o.name} #${i + 1}`,
+          material: o.material,
+          length: o.length,
+          width: o.width,
+          thickness: o.thickness,
+          quantity: 1,
+          price: 0,
+        } satisfies Sheet,
+        left: 1,
+        isOffcut: true,
+      })),
+    );
+    const purchasedSheets = materialSheets.map((s) => ({ sheet: s, left: s.quantity, isOffcut: false }));
+    const stock = [...offcutSheets, ...purchasedSheets];
+
+    if (!stock.length) {
       instances.forEach((i) => addUnplaced(i.part, "Sem chapa deste material"));
       continue;
     }
 
-    const stock = materialSheets.map((s) => ({ sheet: s, left: s.quantity }));
     while (instances.length) {
       const available = stock.filter((s) => s.left > 0);
       if (!available.length) { instances.forEach((i) => addUnplaced(i.part, "Chapas insuficientes")); break; }
@@ -175,7 +203,6 @@ export function optimize(sheets: Sheet[], parts: Part[], params: CutParameters):
       });
       const chosen = candidates[0]!;
       if (!chosen.packed.placements.length) {
-        // As peças geometricamente impossíveis são identificadas separadamente.
         for (const inst of instances) {
           const sheet = chosen.slot.sheet;
           const uw = sheet.length - 2 * Math.max(0, params.margin);
@@ -191,14 +218,17 @@ export function optimize(sheets: Sheet[], parts: Part[], params: CutParameters):
       slot.left -= 1;
       const sheet = slot.sheet;
       sheetCounter += 1;
-      totalCost += sheet.price;
+      if (!slot.isOffcut) totalCost += sheet.price;
       totalCuts += chosen.packed.cuts.length;
       const cutLength = chosen.packed.cuts.reduce((sum, c) => sum + Math.abs(c.to - c.from), 0);
       totalCutLength += cutLength;
       const gap = Math.max(0, params.kerf) + Math.max(0, params.spacing);
-      const freeRects: Rect[] = chosen.packed.strategy === "maxrects"
-        ? deriveFreeRects(sheet.length - 2 * Math.max(0, params.margin), sheet.width - 2 * Math.max(0, params.margin), chosen.packed.placements.map((p) => ({ ...p, x: p.x - params.margin, y: p.y - params.margin })), gap).map((r) => ({ ...r, x: r.x + params.margin, y: r.y + params.margin }))
-        : deriveFreeRects(sheet.length - 2 * Math.max(0, params.margin), sheet.width - 2 * Math.max(0, params.margin), chosen.packed.placements.map((p) => ({ ...p, x: p.x - params.margin, y: p.y - params.margin })), gap).map((r) => ({ ...r, x: r.x + params.margin, y: r.y + params.margin }));
+      const freeRects: Rect[] = deriveFreeRects(
+        sheet.length - 2 * Math.max(0, params.margin),
+        sheet.width - 2 * Math.max(0, params.margin),
+        chosen.packed.placements.map((p) => ({ ...p, x: p.x - params.margin, y: p.y - params.margin })),
+        gap,
+      ).map((r) => ({ ...r, x: r.x + params.margin, y: r.y + params.margin }));
       const offcuts = freeRects.filter((r) => r.w >= 80 && r.h >= 80);
       const usedArea = chosen.packed.placements.reduce((sum, p) => sum + p.w * p.h, 0);
       const sheetArea = sheet.length * sheet.width;
