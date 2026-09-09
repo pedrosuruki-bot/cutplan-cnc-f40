@@ -19,6 +19,7 @@ interface ProjectContextValue {
   result: OptimizationResult | null;
   stale: boolean;
   optimizing: boolean;
+  hydrated: boolean;
   hasSaved: boolean;
   setProject: (updater: (p: Project) => Project) => void;
   updateInfo: (patch: Partial<Pick<Project, "name" | "client" | "date" | "notes">>) => void;
@@ -66,16 +67,20 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [stale, setStale] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
   useEffect(() => {
-    void projectRepository.loadPersistent().then((saved) => {
-      if (saved) {
-        setProjectState(saved.project);
-        setResult(saved.result);
-        setStale(false);
-        setHasSaved(true);
-      }
-    });
+    void projectRepository
+      .loadPersistent()
+      .then((saved) => {
+        if (saved) {
+          setProjectState(saved.project);
+          setResult(saved.result);
+          setStale(false);
+          setHasSaved(true);
+        }
+      })
+      .finally(() => setHydrated(true));
   }, []);
   const setProject = useCallback(
     (updater: (p: Project) => Project) => {
@@ -94,6 +99,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       result,
       stale,
       optimizing,
+      hydrated,
       hasSaved,
       setProject,
       updateInfo: (patch) => setProject((p) => ({ ...p, ...patch })),
@@ -244,7 +250,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         return true;
       },
     }),
-    [project, result, stale, optimizing, hasSaved, setProject],
+    [project, result, stale, optimizing, hydrated, hasSaved, setProject],
   );
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
