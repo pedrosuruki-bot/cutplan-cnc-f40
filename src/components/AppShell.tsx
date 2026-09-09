@@ -14,6 +14,7 @@ import {
   Download,
   Menu,
   X,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/hooks/useProject";
@@ -50,7 +51,7 @@ function useTheme() {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { project, result, stale, optimizing, runOptimize, save, newProject } = useProject();
+  const { project, result, stale, optimizing, hydrated, runOptimize, save, newProject } = useProject();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -65,9 +66,67 @@ export function AppShell({ children }: { children: ReactNode }) {
     "/relatorio": !!result,
   };
 
+  const hasProject = project.name.trim().length > 0;
+  const hasSheets = project.sheets.length > 0;
+  const hasParts = project.parts.length > 0;
+
+  const unlocked: Record<string, boolean> = {
+    "/": true,
+    "/chapas": hasProject,
+    "/pecas": hasProject && hasSheets,
+    "/otimizacao": hasProject && hasSheets && hasParts,
+    "/plano": !!result,
+    "/relatorio": !!result,
+  };
+
+  const firstBlockedStep = () => {
+    if (!hasProject) return "/" as const;
+    if (!hasSheets) return "/chapas" as const;
+    if (!hasParts) return "/pecas" as const;
+    if (!result) return "/otimizacao" as const;
+    return null;
+  };
+
+  const handleStepNavigation = (to: (typeof steps)[number]["to"]) => {
+    if (unlocked[to]) {
+      setMenuOpen(false);
+      return;
+    }
+    const targetIndex = steps.findIndex((s) => s.to === to);
+    const blockingIndex = steps.findIndex((s) => !unlocked[s.to]);
+    const blockingStep = steps[blockingIndex];
+    if (blockingStep && targetIndex >= blockingIndex) {
+      toast.error(`Conclui primeiro a etapa “${blockingStep.label}”.`);
+      navigate({ to: blockingStep.to });
+    }
+    setMenuOpen(false);
+  };
+
+  useEffect(() => {
+    if (!hydrated || path === "/") return;
+    if (unlocked[path]) return;
+    const target = firstBlockedStep();
+    if (!target || target === path) return;
+    const blockedStep = steps.find((s) => s.to === path);
+    const destinationStep = steps.find((s) => s.to === target);
+    toast.error(
+      blockedStep && destinationStep
+        ? `Conclui primeiro a etapa “${destinationStep.label}” para abrir “${blockedStep.label}”.`
+        : "Conclui a etapa anterior antes de continuar.",
+    );
+    navigate({ to: target, replace: true });
+  }, [hydrated, path, hasProject, hasSheets, hasParts, result, navigate]);
+
   const handleOptimize = async () => {
-    if (project.sheets.length === 0 || project.parts.length === 0) {
-      toast.error("Adiciona pelo menos uma chapa e uma peça antes de otimizar.");
+    const missing = firstBlockedStep();
+    if (missing && missing !== "/otimizacao") {
+      const target = steps.find((s) => s.to === missing);
+      toast.error(`Conclui primeiro a etapa “${target?.label ?? "anterior"}”.`);
+      navigate({ to: missing });
+      return;
+    }
+    if (!hasProject || !hasSheets || !hasParts) {
+      toast.error("Conclui o projeto, adiciona chapas e peças antes de otimizar.");
       return;
     }
     try {
@@ -153,19 +212,28 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        {/* Passos */}
         <nav className="flex gap-1 overflow-x-auto border-t border-border px-2 py-2">
           {steps.map((s, i) => {
             const active = path === s.to;
+            const isUnlocked = unlocked[s.to];
             return (
               <Link
                 key={s.to}
                 to={s.to}
+                onClick={(e) => {
+                  if (!isUnlocked) {
+                    e.preventDefault();
+                    handleStepNavigation(s.to);
+                  }
+                }}
+                aria-disabled={!isUnlocked}
                 className={cn(
                   "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
                   active
                     ? "bg-primary text-primary-foreground font-semibold"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                    : isUnlocked
+                      ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      : "cursor-not-allowed text-muted-foreground/45",
                 )}
               >
                 <span
@@ -175,10 +243,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                       ? "bg-primary-foreground/20"
                       : done[s.to]
                         ? "bg-success text-success-foreground"
-                        : "bg-muted",
+                        : isUnlocked
+                          ? "bg-muted"
+                          : "bg-muted/60",
                   )}
                 >
-                  {done[s.to] && !active ? "✓" : i + 1}
+                  {!isUnlocked ? <Lock className="h-3 w-3" /> : done[s.to] && !active ? "✓" : i + 1}
                 </span>
                 {s.label}
               </Link>
@@ -189,16 +259,28 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {menuOpen ? (
         <div className="no-print border-b border-border bg-card px-4 py-2 md:hidden">
-          {steps.map((s) => (
-            <Link
-              key={s.to}
-              to={s.to}
-              onClick={() => setMenuOpen(false)}
-              className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-accent"
-            >
-              <s.icon className="h-4 w-4" /> {s.label}
-            </Link>
-          ))}
+          {steps.map((s, i) => {
+            const isUnlocked = unlocked[s.to];
+            const active = path === s.to;
+            return (
+              <button
+                key={s.to}
+                type="button"
+                onClick={() => handleStepNavigation(s.to)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm",
+                  active
+                    ? "bg-accent font-semibold text-accent-foreground"
+                    : isUnlocked
+                      ? "hover:bg-accent"
+                      : "cursor-not-allowed text-muted-foreground/50",
+                )}
+              >
+                {isUnlocked ? <s.icon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                <span>{i + 1}. {s.label}</span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
@@ -212,10 +294,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <button
         onClick={handleOptimize}
-        disabled={optimizing}
+        disabled={optimizing || !hydrated || !hasProject || !hasSheets || !hasParts}
         className={cn(
           btnPrimary,
           "no-print fixed bottom-5 right-5 z-40 h-12 rounded-full px-6 shadow-lg",
+          (!hasProject || !hasSheets || !hasParts || !hydrated) && "cursor-not-allowed opacity-50",
         )}
         title="Otimizar (Ctrl+Enter)"
       >
