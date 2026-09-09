@@ -12,13 +12,13 @@ import { createDemoProject, createEmptyProject } from "@/lib/demo";
 import { projectRepository } from "@/lib/storage";
 import { deriveFreeRects } from "@/lib/optimizer/maxrects";
 import { buildCutSequence } from "@/lib/cut-sequence";
-import { optimize } from "@/lib/optimizer";
 
 interface ProjectContextValue {
   project: Project;
   result: OptimizationResult | null;
   stale: boolean;
   optimizing: boolean;
+  optimizationProgress: number;
   hydrated: boolean;
   hasSaved: boolean;
   setProject: (updater: (p: Project) => Project) => void;
@@ -62,11 +62,67 @@ function sheetsForCost(project: Project): number {
       ) / sheets.length
     : 0;
 }
+
+function runOptimizerWorker(
+  project: Project,
+  onProgress: (progress: number) => void,
+): Promise<OptimizationResult> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("../workers/optimizer.worker.ts", import.meta.url), {
+      type: "module",
+    });
+    const requestId = Date.now() + Math.floor(Math.random() * 1000);
+    const started = performance.now();
+    let lastProgress = 5;
+    const timer = window.setInterval(() => {
+      const elapsed = performance.now() - started;
+      const progress = Math.min(95, Math.max(lastProgress, Math.round((elapsed / 60000) * 95)));
+      if (progress > lastProgress) {
+        lastProgress = progress;
+        onProgress(progress);
+      }
+    }, 120);
+
+    const cleanup = () => {
+      window.clearInterval(timer);
+      worker.terminate();
+    };
+
+    worker.onmessage = (event: MessageEvent) => {
+      const message = event.data as
+        | { id: number; type: "done"; result: OptimizationResult }
+        | { id: number; type: "error"; message: string };
+      if (message.id !== requestId) return;
+      cleanup();
+      if (message.type === "error") {
+        reject(new Error(message.message));
+        return;
+      }
+      onProgress(100);
+      resolve(message.result);
+    };
+    worker.onerror = () => {
+      cleanup();
+      reject(new Error("Não foi possível iniciar o motor de otimização."));
+    };
+
+    onProgress(5);
+    worker.postMessage({
+      id: requestId,
+      sheets: project.sheets,
+      parts: project.parts,
+      parameters: project.parameters,
+      offcutStock: project.offcutStock,
+    });
+  });
+}
+
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [project, setProjectState] = useState<Project>(() => createEmptyProject());
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [stale, setStale] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
+  const [optimizationProgress, setOptimizationProgress] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
   useEffect(() => {
@@ -99,6 +155,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       result,
       stale,
       optimizing,
+      optimizationProgress,
       hydrated,
       hasSaved,
       setProject,
@@ -149,14 +206,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       },
       runOptimize: async () => {
         setOptimizing(true);
+        setOptimizationProgress(0);
         await new Promise((r) => setTimeout(r, 20));
         try {
-          const res = optimize(
-            project.sheets,
-            project.parts,
-            project.parameters,
-            project.offcutStock,
-          );
+          const res = await runOptimizerWorker(project, setOptimizationProgress);
           setResult(res);
           setStale(false);
           projectRepository.saveResult(project, res);
@@ -164,6 +217,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
           return res;
         } finally {
           setOptimizing(false);
+          setOptimizationProgress(0);
         }
       },
       movePlacement: (layoutIndex, placementKey, x, y, rotated) => {
@@ -250,7 +304,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         return true;
       },
     }),
-    [project, result, stale, optimizing, hydrated, hasSaved, setProject],
+    [project, result, stale, optimizing, optimizationProgress, hydrated, hasSaved, setProject],
   );
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
