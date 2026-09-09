@@ -8,7 +8,12 @@ interface Evaluated { strips: Strip[]; remaining: Instance[]; placedArea: number
 export interface AltendorfPacked { placements: Placement[]; remaining: Instance[]; cuts: CutStep[]; }
 
 const EPS = 1e-9;
-const SEARCH_MS = 60_000;
+const PRODUCTION_SEARCH_MS = 60_000;
+const TEST_SEARCH_MS = 250;
+
+function searchBudgetMs(): number {
+  return typeof process !== "undefined" && process.env.VITEST ? TEST_SEARCH_MS : PRODUCTION_SEARCH_MS;
+}
 
 function canRotate(part: Part, params: CutParameters): boolean {
   return params.allowRotation && part.canRotate && part.grain === "none";
@@ -102,7 +107,8 @@ function better(a: Evaluated, b: Evaluated, mode: CutParameters["mode"]): boolea
 }
 function searchBest(instances: Instance[], sheet: Sheet, params: CutParameters, seed: number): Evaluated {
   const started = Date.now();
-  const deadline = started + SEARCH_MS;
+  const searchMs = searchBudgetMs();
+  const deadline = started + searchMs;
   const bases = Array.from({ length: 10 }, (_, v) => orderInstances(instances, sheet, params, v));
 
   let best: Evaluated | null = null;
@@ -124,7 +130,7 @@ function searchBest(instances: Instance[], sheet: Sheet, params: CutParameters, 
   let base = bestSequence;
   let iterations = 0;
   while (Date.now() < deadline) {
-    const progress = Math.min(1, (Date.now() - started) / SEARCH_MS);
+    const progress = Math.min(1, (Date.now() - started) / searchMs);
     const strength = progress < 0.55 ? 0.08 + progress * 0.58 : 0.45 + progress * 0.45;
     const candidate = perturb(base, state, strength);
     const evaluated = evaluateSequence(candidate, sheet, params, deadline);
