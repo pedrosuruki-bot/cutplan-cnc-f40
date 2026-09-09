@@ -165,6 +165,13 @@ function pack(
 
 function choosePacked(instances: Instance[], sheet: Sheet, params: CutParameters): Packed {
   const strategy: Strategy = params.sawMode === "altendorf-f40" ? "altendorf-f40" : "guillotine";
+
+  // O motor F40 já faz multi-start/adaptive search durante o seu orçamento total de pesquisa.
+  // Reexecutá-lo 10 vezes aqui só multiplicava o tempo sem melhorar a solução de forma garantida.
+  if (strategy === "altendorf-f40") {
+    return pack(instances, sheet, params, strategy, 0);
+  }
+
   const candidates: Packed[] = [];
   for (let v = 0; v < 10; v++) candidates.push(pack(instances, sheet, params, strategy, v));
   candidates.sort((a, b) => {
