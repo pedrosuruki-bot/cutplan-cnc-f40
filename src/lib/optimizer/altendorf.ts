@@ -101,27 +101,50 @@ function better(a: Evaluated, b: Evaluated, mode: CutParameters["mode"]): boolea
   return a.stripCount < b.stripCount;
 }
 function searchBest(instances: Instance[], sheet: Sheet, params: CutParameters, seed: number): Evaluated {
-  const deadline = Date.now() + SEARCH_MS;
+  const started = Date.now();
+  const deadline = started + SEARCH_MS;
   const bases = Array.from({ length: 10 }, (_, v) => orderInstances(instances, sheet, params, v));
-  let best = evaluateSequence(bases[seed % bases.length]!, sheet, params, deadline);
-  const state = { value: hashSeed(instances, sheet, seed) }, start = best;
-  let base = bases[seed % bases.length]!;
+
+  let best: Evaluated | null = null;
+  let bestSequence: Instance[] | null = null;
+  for (let i = 0; i < bases.length && Date.now() < deadline; i++) {
+    const evaluated = evaluateSequence(bases[i]!, sheet, params, deadline);
+    if (!best || better(evaluated, best, params.mode)) {
+      best = evaluated;
+      bestSequence = bases[i]!;
+    }
+  }
+
+  if (!best || !bestSequence) {
+    bestSequence = bases[seed % bases.length]!;
+    best = evaluateSequence(bestSequence, sheet, params);
+  }
+
+  const state = { value: hashSeed(instances, sheet, seed) };
+  let base = bestSequence;
   let iterations = 0;
   while (Date.now() < deadline) {
-    const progress = Math.min(1, (Date.now() - (deadline - SEARCH_MS)) / SEARCH_MS);
+    const progress = Math.min(1, (Date.now() - started) / SEARCH_MS);
     const strength = progress < 0.55 ? 0.08 + progress * 0.58 : 0.45 + progress * 0.45;
     const candidate = perturb(base, state, strength);
     const evaluated = evaluateSequence(candidate, sheet, params, deadline);
     iterations++;
-    if (better(evaluated, best, params.mode)) { best = evaluated; base = candidate; state.value ^= Math.imul(iterations + 1, 2654435761); }
-    else if (iterations % 5 === 0) {
+    if (better(evaluated, best, params.mode)) {
+      best = evaluated;
+      base = candidate;
+      state.value ^= Math.imul(iterations + 1, 2654435761);
+    } else if (iterations % 5 === 0) {
       const alternate = bases[Math.floor(random01(state) * bases.length)]!;
       const alt = evaluateSequence(alternate, sheet, params, deadline);
-      if (better(alt, best, params.mode)) { best = alt; base = alternate; }
-      else if (iterations % 17 === 0) base = perturb(best.strips.flatMap(s => s.items.map(i => i.instance)), state, 0.25);
+      if (better(alt, best, params.mode)) {
+        best = alt;
+        base = alternate;
+      } else if (iterations % 17 === 0) {
+        base = perturb(best.strips.flatMap(s => s.items.map(i => i.instance)), state, 0.25);
+      }
     }
   }
-  return better(best, start, params.mode) ? best : start;
+  return best;
 }
 function r(v: number) { return Math.round(v * 10) / 10; }
 
