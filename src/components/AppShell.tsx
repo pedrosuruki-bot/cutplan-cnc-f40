@@ -9,12 +9,10 @@ import {
   Play,
   Ruler,
   Save,
-  Settings2,
   Sun,
   Download,
   Menu,
   X,
-  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/hooks/useProject";
@@ -22,13 +20,11 @@ import { exportProjectPdf } from "@/lib/pdf";
 import { btn, btnPrimary } from "@/components/ui-bits";
 import { cn } from "@/lib/utils";
 
-const steps = [
-  { to: "/", label: "Projeto", icon: FileText },
-  { to: "/chapas", label: "Chapas", icon: Layers },
+const nav = [
+  { to: "/", label: "Trabalho", icon: FileText },
   { to: "/pecas", label: "Peças", icon: Ruler },
-  { to: "/otimizacao", label: "Otimizar", icon: Settings2 },
+  { to: "/chapas", label: "Chapas", icon: Layers },
   { to: "/plano", label: "Plano", icon: LayoutGrid },
-  { to: "/relatorio", label: "Relatório", icon: FileText },
 ] as const;
 
 function useTheme() {
@@ -57,86 +53,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const done: Record<string, boolean> = {
-    "/": project.name.trim().length > 0,
-    "/chapas": project.sheets.length > 0,
-    "/pecas": project.parts.length > 0,
-    "/otimizacao": !!result,
-    "/plano": !!result,
-    "/relatorio": !!result,
-  };
-
   const hasProject = project.name.trim().length > 0;
   const hasSheets = project.sheets.length > 0;
   const hasParts = project.parts.length > 0;
 
-  const unlocked: Record<string, boolean> = {
-    "/": true,
-    "/chapas": hasProject,
-    "/pecas": hasProject && hasSheets,
-    "/otimizacao": hasProject && hasSheets && hasParts,
-    "/plano": !!result,
-    "/relatorio": !!result,
-  };
-
-  const firstBlockedStep = () => {
-    if (!hasProject) return "/" as const;
-    if (!hasSheets) return "/chapas" as const;
-    if (!hasParts) return "/pecas" as const;
-    if (!result) return "/otimizacao" as const;
-    return null;
-  };
-
-  const handleStepNavigation = (to: (typeof steps)[number]["to"]) => {
-    if (unlocked[to]) {
-      setMenuOpen(false);
-      return;
-    }
-    const targetIndex = steps.findIndex((s) => s.to === to);
-    const blockingIndex = steps.findIndex((s) => !unlocked[s.to]);
-    const blockingStep = steps[blockingIndex];
-    if (blockingStep && targetIndex >= blockingIndex) {
-      toast.error(`Conclui primeiro a etapa “${blockingStep.label}”.`);
-      navigate({ to: blockingStep.to });
-    }
-    setMenuOpen(false);
-  };
-
-  useEffect(() => {
-    if (!hydrated || path === "/") return;
-    if (unlocked[path]) return;
-    const target = firstBlockedStep();
-    if (!target || target === path) return;
-    const blockedStep = steps.find((s) => s.to === path);
-    const destinationStep = steps.find((s) => s.to === target);
-    toast.error(
-      blockedStep && destinationStep
-        ? `Conclui primeiro a etapa “${destinationStep.label}” para abrir “${blockedStep.label}”.`
-        : "Conclui a etapa anterior antes de continuar.",
-    );
-    navigate({ to: target, replace: true });
-  }, [hydrated, path, hasProject, hasSheets, hasParts, result, navigate]);
-
   const handleOptimize = async () => {
-    const missing = firstBlockedStep();
-    if (missing && missing !== "/otimizacao") {
-      const target = steps.find((s) => s.to === missing);
-      toast.error(`Conclui primeiro a etapa “${target?.label ?? "anterior"}”.`);
-      navigate({ to: missing });
+    if (!hydrated) return;
+    if (!hasSheets) {
+      toast.error("Adiciona pelo menos uma chapa antes de otimizar.");
+      navigate({ to: "/chapas" });
       return;
     }
-    if (!hasProject || !hasSheets || !hasParts) {
-      toast.error("Conclui o projeto, adiciona chapas e peças antes de otimizar.");
+    if (!hasParts) {
+      toast.error("Adiciona pelo menos uma peça antes de otimizar.");
+      navigate({ to: "/pecas" });
+      return;
+    }
+    if (!hasProject) {
+      toast.error("Dá um nome ao trabalho antes de otimizar.");
+      navigate({ to: "/" });
       return;
     }
     try {
       const res = await runOptimize();
       if (!res) return;
-      toast.success(
-        `${res.stats.sheetsUsed} chapa(s) · ${res.stats.usagePct.toFixed(1)}% aproveitamento${
-          res.unplaced.length ? ` · ${res.unplaced.length} peça(s) por colocar` : ""
-        }`,
-      );
+      const message = `${res.stats.partsPlaced}/${res.stats.partsTotal} peças · ${res.stats.sheetsUsed} chapa(s) · ${res.stats.usagePct.toFixed(1)}% aproveitamento`;
+      if (res.unplaced.length) toast.warning(message + " · há peças por colocar");
+      else toast.success(message);
       navigate({ to: "/plano" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível otimizar o corte.");
@@ -152,7 +95,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         save();
-        toast.success("Projeto guardado");
+        toast.success("Trabalho guardado");
       }
     };
     window.addEventListener("keydown", onKey);
@@ -162,148 +105,130 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="no-print sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              className={cn(btn, "h-9 w-9 p-0 md:hidden")}
-              onClick={() => setMenuOpen((o) => !o)}
-              aria-label="Menu"
-            >
-              {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </button>
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-2 sm:px-4 sm:py-3">
+          <button
+            className={cn(btn, "h-9 w-9 shrink-0 p-0 sm:hidden")}
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label="Abrir menu"
+          >
+            {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
+          <Link to="/" className="flex min-w-0 items-center gap-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
               <LayoutGrid className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-bold leading-tight">CutPlan CNC</p>
-              <p className="truncate text-xs text-muted-foreground">{project.name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {hasProject ? project.name : "Trabalho novo"}
+              </p>
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button className={cn(btn, "hidden sm:inline-flex")} onClick={newProject}>
+          </Link>
+
+          <nav className="ml-2 hidden min-w-0 flex-1 items-center gap-1 md:flex">
+            {nav.map((item) => {
+              const active = path === item.to;
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-primary font-semibold text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <button className={cn(btn, "hidden sm:inline-flex")} onClick={newProject} title="Novo trabalho">
               <FolderPlus className="h-4 w-4" /> Novo
             </button>
             <button
               className={btn}
               onClick={() => {
                 save();
-                toast.success("Projeto guardado");
+                toast.success("Trabalho guardado");
               }}
+              title="Guardar"
             >
               <Save className="h-4 w-4" />
-              <span className="hidden sm:inline">Guardar</span>
+              <span className="hidden lg:inline">Guardar</span>
             </button>
-            <button
-              className={btn}
-              onClick={() => {
-                if (!result) {
-                  toast.error("Otimiza primeiro para exportar o plano.");
-                  return;
-                }
-                exportProjectPdf(project, result);
-              }}
-            >
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">PDF</span>
-            </button>
-            <button className={cn(btn, "h-10 w-10 p-0")} onClick={toggle} aria-label="Tema">
+            {result ? (
+              <button
+                className={btn}
+                onClick={() => exportProjectPdf(project, result)}
+                title="Exportar PDF"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden lg:inline">PDF</span>
+              </button>
+            ) : null}
+            <button className={cn(btn, "h-9 w-9 p-0")} onClick={toggle} aria-label="Tema">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
           </div>
         </div>
 
-        <nav className="flex gap-1 overflow-x-auto border-t border-border px-2 py-2">
-          {steps.map((s, i) => {
-            const active = path === s.to;
-            const isUnlocked = unlocked[s.to];
-            return (
-              <Link
-                key={s.to}
-                to={s.to}
-                onClick={(e) => {
-                  if (!isUnlocked) {
-                    e.preventDefault();
-                    handleStepNavigation(s.to);
-                  }
-                }}
-                aria-disabled={!isUnlocked}
-                className={cn(
-                  "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
-                  active
-                    ? "bg-primary text-primary-foreground font-semibold"
-                    : isUnlocked
-                      ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      : "cursor-not-allowed text-muted-foreground/45",
-                )}
-              >
-                <span
+        {menuOpen ? (
+          <nav className="no-print border-t border-border bg-card p-2 sm:hidden">
+            {nav.map((item) => {
+              const active = path === item.to;
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMenuOpen(false)}
                   className={cn(
-                    "grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold",
-                    active
-                      ? "bg-primary-foreground/20"
-                      : done[s.to]
-                        ? "bg-success text-success-foreground"
-                        : isUnlocked
-                          ? "bg-muted"
-                          : "bg-muted/60",
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm",
+                    active ? "bg-accent font-semibold" : "text-muted-foreground",
                   )}
                 >
-                  {!isUnlocked ? <Lock className="h-3 w-3" /> : done[s.to] && !active ? "✓" : i + 1}
-                </span>
-                {s.label}
-              </Link>
-            );
-          })}
-        </nav>
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                void handleOptimize();
+              }}
+              className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-primary"
+            >
+              <Play className="h-4 w-4" /> Otimizar agora
+            </button>
+          </nav>
+        ) : null}
       </header>
 
-      {menuOpen ? (
-        <div className="no-print border-b border-border bg-card px-4 py-2 md:hidden">
-          {steps.map((s, i) => {
-            const isUnlocked = unlocked[s.to];
-            const active = path === s.to;
-            return (
-              <button
-                key={s.to}
-                type="button"
-                onClick={() => handleStepNavigation(s.to)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm",
-                  active
-                    ? "bg-accent font-semibold text-accent-foreground"
-                    : isUnlocked
-                      ? "hover:bg-accent"
-                      : "cursor-not-allowed text-muted-foreground/50",
-                )}
-              >
-                {isUnlocked ? <s.icon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                <span>{i + 1}. {s.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
       {stale && result ? (
-        <div className="no-print border-b border-warning/40 bg-warning/15 px-4 py-2 text-xs text-foreground">
-          Alteraste os dados — o plano atual está desatualizado. Volta a otimizar.
+        <div className="no-print border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-foreground">
+          O trabalho foi alterado. O plano atual precisa de nova otimização.
         </div>
       ) : null}
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 pb-24">{children}</main>
+      <main className="mx-auto w-full max-w-7xl px-3 py-4 pb-24 sm:px-4 sm:py-6">{children}</main>
 
       <button
-        onClick={handleOptimize}
-        disabled={optimizing || !hydrated || !hasProject || !hasSheets || !hasParts}
+        onClick={() => void handleOptimize()}
+        disabled={optimizing || !hydrated}
         className={cn(
           btnPrimary,
-          "no-print fixed bottom-5 right-5 z-40 h-12 rounded-full px-6 shadow-lg",
-          (!hasProject || !hasSheets || !hasParts || !hydrated) && "cursor-not-allowed opacity-50",
+          "no-print fixed bottom-4 right-4 z-40 h-12 rounded-full px-5 shadow-lg sm:bottom-5 sm:right-5",
         )}
         title="Otimizar (Ctrl+Enter)"
       >
         <Play className="h-4 w-4" />
-        {optimizing ? "A OTIMIZAR…" : "OTIMIZAR"}
+        <span className="hidden sm:inline">{optimizing ? "A otimizar…" : "Otimizar"}</span>
       </button>
     </div>
   );
