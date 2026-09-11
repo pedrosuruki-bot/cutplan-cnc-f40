@@ -9,21 +9,7 @@ import { eur, m2, num, pct } from "@/lib/format";
 import { exportLayoutDxf, exportLayoutSvg } from "@/lib/vector-export";
 
 export const Route = createFileRoute("/relatorio")({
-  head: () => ({
-    meta: [
-      { title: "Relatório — CutPlan CNC" },
-      {
-        name: "description",
-        content:
-          "Relatório imprimível do plano de corte: parâmetros, peças, chapas, sobras e estatísticas.",
-      },
-      { property: "og:title", content: "Relatório — CutPlan CNC" },
-      {
-        property: "og:description",
-        content: "Relatório completo pronto a imprimir ou exportar em PDF.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Relatório — CutPlan CNC" }, { name: "description", content: "Resumo de produção e exportação do plano de corte." }] }),
   component: ReportPage,
 });
 
@@ -32,182 +18,52 @@ function ReportPage() {
   const [showPartIds, setShowPartIds] = useState(true);
 
   if (!result) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Relatório" />
-        <EmptyState
-          title="Sem resultados para reportar"
-          description="Executa a otimização para gerar o relatório completo."
-          action={
-            <Link to="/otimizacao" className={btnPrimary}>
-              Ir para Otimizar
-            </Link>
-          }
-        />
-      </div>
-    );
+    return <div className="space-y-5"><PageHeader title="Relatório" /><EmptyState title="Sem resultado" description="Executa a otimização para gerar o plano e o relatório." action={<Link to="/otimizacao" className={btnPrimary}>Ir para otimizar</Link>} /></div>;
   }
 
+  const complete = result.stats.partsPlaced === result.stats.partsTotal;
+  const unplacedQty = result.unplaced.reduce((sum, item) => sum + item.quantity, 0);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Relatório"
         subtitle={`${project.name}${project.client ? ` · ${project.client}` : ""} · ${project.date}`}
-        actions={
-          <>
-            <button className={btn} onClick={() => window.print()}>
-              <Printer className="h-4 w-4" /> Imprimir
-            </button>
-            <button className={btn} onClick={() => exportLayoutSvg(project, result)}>
-              <FileType2 className="h-4 w-4" /> SVG
-            </button>
-            <button className={btn} onClick={() => exportLayoutDxf(project, result)}>
-              <FileCode2 className="h-4 w-4" /> DXF
-            </button>
-            <button className={btnPrimary} onClick={() => exportSheetDrawingPdf(project, result, showPartIds)}>
-              <Download className="h-4 w-4" /> PDF — Desenho das chapas
-            </button>
-            <button className={btn} onClick={() => exportProjectDetailsPdf(project, result)}>
-              <Download className="h-4 w-4" /> PDF — Detalhes do projeto
-            </button>
-          </>
-        }
+        actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <button className={btn} onClick={() => window.print()}><Printer className="h-4 w-4" /> Imprimir</button>
+          <button className={btn} onClick={() => exportLayoutSvg(project, result)}><FileType2 className="h-4 w-4" /> SVG</button>
+          <button className={btn} onClick={() => exportLayoutDxf(project, result)}><FileCode2 className="h-4 w-4" /> DXF</button>
+          <button className={btnPrimary} onClick={() => exportSheetDrawingPdf(project, result, showPartIds)}><Download className="h-4 w-4" /> PDF desenho</button>
+          <button className={btn} onClick={() => exportProjectDetailsPdf(project, result)}><Download className="h-4 w-4" /> PDF detalhes</button>
+        </div>}
       />
 
-      <Panel title="Opções do PDF — desenho das chapas">
-        <label className="flex cursor-pointer items-center gap-3 text-sm">
-          <input
-            type="checkbox"
-            checked={showPartIds}
-            onChange={(event) => setShowPartIds(event.target.checked)}
-            className="h-4 w-4 rounded border-border accent-primary"
-          />
-          <span>
-            Mostrar identificação das peças
-            <span className="ml-2 text-xs text-muted-foreground">
-              Desligado = ficam apenas as medidas dentro das peças
-            </span>
-          </span>
-        </label>
-      </Panel>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Chapas usadas" value={num(result.stats.sheetsUsed)} />
-        <Stat
-          label="Peças colocadas"
-          value={`${result.stats.partsPlaced}/${result.stats.partsTotal}`}
-        />
-        <Stat
-          label="Aproveitamento"
-          value={pct(result.stats.usagePct)}
-          progress={result.stats.usagePct}
-        />
-        <Stat label="Custo material" value={eur(result.stats.totalCost)} />
-        <Stat label="Custo de corte" value={eur(result.stats.cuttingCost)} />
-        <Stat label="Custo líquido estimado" value={eur(result.stats.estimatedNetCost)} />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Peças" value={`${num(result.stats.partsPlaced)}/${num(result.stats.partsTotal)}`} hint={complete ? "Tudo acomodado" : `${num(unplacedQty)} por colocar`} />
+        <Stat label="Chapas usadas" value={num(result.stats.sheetsUsed)} hint={`${pct(result.stats.usagePct)} aproveitamento`} progress={result.stats.usagePct} />
+        <Stat label="Custo estimado" value={eur(result.stats.estimatedNetCost)} hint={`${eur(result.stats.totalCost)} material · ${eur(result.stats.cuttingCost)} corte`} />
       </div>
 
-      <Panel title="Parâmetros de corte">
-        <p className="text-sm text-muted-foreground">
-          Lâmina {project.parameters.kerf} mm · Margem {project.parameters.margin} mm · Espaçamento {" "}
-          {project.parameters.spacing} mm · Rotação {" "}
-          {project.parameters.allowRotation ? "sim" : "não"} · Modo {project.parameters.mode}
-        </p>
+      {!complete ? <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm"><strong>Atenção:</strong> {num(unplacedQty)} peça(s) não foram acomodadas. Consulta a secção no fim antes de produzir.</div> : null}
+
+      <Panel title="Desenho PDF" description="Exportação rápida para levar para a oficina.">
+        <label className="flex cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={showPartIds} onChange={(event) => setShowPartIds(event.target.checked)} className="h-4 w-4 rounded border-border accent-primary" /><span>Mostrar IDs das peças no desenho</span></label>
       </Panel>
 
-      <Panel title="Peças">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-                <th className="py-2 pr-3 font-medium">ID</th>
-                <th className="py-2 pr-3 font-medium">Nome</th>
-                <th className="py-2 pr-3 font-medium">Medidas</th>
-                <th className="py-2 pr-3 font-medium">Qtd</th>
-                <th className="py-2 pr-3 font-medium">Material</th>
-                <th className="py-2 pr-3 font-medium">Fita</th>
-              </tr>
-            </thead>
-            <tbody>
-              {project.parts.map((p) => (
-                <tr key={p.id} className="border-b border-border/60">
-                  <td className="py-1.5 pr-3 font-mono text-xs">{p.id}</td>
-                  <td className="py-1.5 pr-3">{p.name}</td>
-                  <td className="py-1.5 pr-3">
-                    {p.length} × {p.width} mm
-                  </td>
-                  <td className="py-1.5 pr-3">{p.quantity}</td>
-                  <td className="py-1.5 pr-3">{p.material}</td>
-                  <td className="py-1.5 pr-3">{p.edgeBanding || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Panel title="Peças" description={`${num(project.parts.length)} tipos · ${num(result.stats.partsTotal)} unidades`}>
+        <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-sm"><thead><tr className="border-b border-border text-left text-xs uppercase text-muted-foreground"><th className="py-2 pr-3">ID</th><th className="py-2 pr-3">Nome</th><th className="py-2 pr-3">Medidas</th><th className="py-2 pr-3">Qtd</th><th className="py-2 pr-3">Material</th></tr></thead><tbody>{project.parts.map((p) => <tr key={p.id} className="border-b border-border/60"><td className="py-1.5 pr-3 font-mono text-xs">{p.id}</td><td className="py-1.5 pr-3">{p.name}</td><td className="py-1.5 pr-3">{p.length} × {p.width} mm</td><td className="py-1.5 pr-3">{p.quantity}</td><td className="py-1.5 pr-3">{p.material}</td></tr>)}</tbody></table></div>
       </Panel>
 
-      {result.layouts.map((l) => (
-        <Panel
-          key={l.index}
-          title={`Chapa ${l.index} — ${l.material}`}
-          description={`${l.length}×${l.width}×${l.thickness} mm · aproveitamento ${pct(l.usagePct)} · ${l.cuts.length} cortes`}
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-                  <th className="py-2 pr-3 font-medium">Peça</th>
-                  <th className="py-2 pr-3 font-medium">X</th>
-                  <th className="py-2 pr-3 font-medium">Y</th>
-                  <th className="py-2 pr-3 font-medium">Medidas</th>
-                  <th className="py-2 pr-3 font-medium">Rotação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {l.placements.map((p, i) => (
-                  <tr key={i} className="border-b border-border/60">
-                    <td className="py-1.5 pr-3">
-                      {p.partId} · {p.name}
-                    </td>
-                    <td className="py-1.5 pr-3">{Math.round(p.x)}</td>
-                    <td className="py-1.5 pr-3">{Math.round(p.y)}</td>
-                    <td className="py-1.5 pr-3">
-                      {Math.round(p.w)} × {Math.round(p.h)}
-                    </td>
-                    <td className="py-1.5 pr-3">{p.rotated ? "90°" : "0°"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Sobras aproveitáveis:{" "}
-            {l.offcuts.length
-              ? l.offcuts.map((o) => `${Math.round(o.w)}×${Math.round(o.h)}`).join(" · ")
-              : "nenhuma"}
-          </p>
-        </Panel>
-      ))}
+      {result.layouts.map((layout) => <Panel key={layout.index} title={`Chapa ${layout.index}`} description={`${layout.material} · ${layout.length} × ${layout.width} × ${layout.thickness} mm · ${pct(layout.usagePct)} · ${layout.placements.length} peças`}>
+        <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-sm"><thead><tr className="border-b border-border text-left text-xs uppercase text-muted-foreground"><th className="py-2 pr-3">Peça</th><th className="py-2 pr-3">X</th><th className="py-2 pr-3">Y</th><th className="py-2 pr-3">Medidas</th><th className="py-2 pr-3">Rotação</th></tr></thead><tbody>{layout.placements.map((p, i) => <tr key={`${p.partId}-${p.instance}-${i}`} className="border-b border-border/60"><td className="py-1.5 pr-3">{p.partId} · {p.name}</td><td className="py-1.5 pr-3">{Math.round(p.x)}</td><td className="py-1.5 pr-3">{Math.round(p.y)}</td><td className="py-1.5 pr-3">{Math.round(p.w)} × {Math.round(p.h)}</td><td className="py-1.5 pr-3">{p.rotated ? "90°" : "0°"}</td></tr>)}</tbody></table></div>
+        <p className="mt-3 text-xs text-muted-foreground">Sobras aproveitáveis: {layout.offcuts.length ? layout.offcuts.map((o) => `${Math.round(o.w)}×${Math.round(o.h)}`).join(" · ") : "nenhuma"}</p>
+      </Panel>)}
 
-      <Panel title="Resumo de áreas">
-        <div className="grid gap-2 text-sm sm:grid-cols-3">
-          <p>Área total das chapas: {m2(result.stats.totalSheetArea)}</p>
-          <p>Área usada: {m2(result.stats.totalUsedArea)}</p>
-          <p>Área de sobras: {m2(result.stats.totalOffcutArea)}</p>
-        </div>
+      <Panel title="Resumo" description="Valores úteis para produção e orçamento.">
+        <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4"><p>Área das chapas: {m2(result.stats.totalSheetArea)}</p><p>Área usada: {m2(result.stats.totalUsedArea)}</p><p>Sobras: {m2(result.stats.totalOffcutArea)}</p><p>Cortes: {num(result.stats.totalCuts)}</p></div>
       </Panel>
 
-      {result.unplaced.length ? (
-        <Panel title="Peças não acomodadas">
-          <ul className="space-y-1 text-sm">
-            {result.unplaced.map((u) => (
-              <li key={u.partId + u.reason}>
-                {u.partId} · {u.name} ×{u.quantity} — {u.reason}
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      ) : null}
+      {result.unplaced.length ? <Panel title="Peças por colocar" description="Verifica primeiro estas peças."><div className="space-y-1 text-sm">{result.unplaced.map((u) => <div key={u.partId + u.reason} className="flex flex-wrap gap-x-2"><span className="font-mono text-xs">{u.partId}</span><span>{u.name} ×{u.quantity}</span><span className="text-muted-foreground">· {u.reason}</span></div>)}</div></Panel> : null}
     </div>
   );
 }
