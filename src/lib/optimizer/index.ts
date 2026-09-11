@@ -12,7 +12,7 @@ import type {
 } from "@/types";
 import { MaxRectsBin, type FitHeuristic, deriveFreeRects } from "./maxrects";
 import { GuillotineBin } from "./guillotine";
-import { packForAltendorfF40 } from "./altendorf";
+import { packForAltendorfF40, type AltendorfProgress } from "./altendorf";
 import { buildCutSequence } from "@/lib/cut-sequence";
 
 export { MaxRectsBin, GuillotineBin };
@@ -23,6 +23,17 @@ interface Instance {
   instance: number;
 }
 type Strategy = "maxrects" | "guillotine" | "altendorf-f40";
+
+export interface OptimizationProgressSnapshot {
+  progress: number;
+  elapsedMs: number;
+  placed: number;
+  total: number;
+  layouts: SheetLayout[];
+}
+
+const PRODUCTION_SEARCH_MS = 60_000;
+const PROBE_SEARCH_MS = 350;
 
 export function normalizeMaterial(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -103,15 +114,61 @@ interface Packed {
   strategy: Strategy;
 }
 
+function placementsToLayout(
+  sheet: Sheet,
+  placements: Placement[],
+  cuts: CutStep[],
+  index: number,
+  params: CutParameters,
+): SheetLayout {
+  const margin = Math.max(0, params.margin);
+  const gap = Math.max(0, params.kerf) + Math.max(0, params.spacing);
+  const freeRects: Rect[] = deriveFreeRects(
+    sheet.length - 2 * margin,
+    sheet.width - 2 * margin,
+    placements.map((p) => ({ ...p, x: p.x - margin, y: p.y - margin })),
+    gap,
+  ).map((r) => ({ ...r, x: r.x + margin, y: r.y + margin }));
+  const offcuts = freeRects.filter((r) => r.w >= 80 && r.h >= 80);
+  const usedArea = placements.reduce((sum, p) => sum + p.w * p.h, 0);
+  const sheetArea = sheet.length * sheet.width;
+  return {
+    sheetId: sheet.id,
+    sheetName: sheet.name,
+    material: sheet.material,
+    index,
+    length: sheet.length,
+    width: sheet.width,
+    thickness: sheet.thickness,
+    placements,
+    offcuts,
+    usedArea,
+    sheetArea,
+    usagePct: sheetArea ? (usedArea / sheetArea) * 100 : 0,
+    cuts,
+    cutMethod: "heuristic",
+    manual: false,
+  };
+}
+
 function pack(
   instances: Instance[],
   sheet: Sheet,
   params: CutParameters,
   strategy: Strategy,
   orderVariant: number,
+  deadline?: number,
+  onProgress?: (snapshot: AltendorfProgress) => void,
 ): Packed {
   if (strategy === "altendorf-f40") {
-    const planned = packForAltendorfF40(instances, sheet, params, orderVariant);
+    const planned = packForAltendorfF40(
+      instances,
+      sheet,
+      params,
+      orderVariant,
+      deadline,
+      onProgress,
+    );
     return {
       placements: planned.placements,
       remaining: planned.remaining,
@@ -119,6 +176,7 @@ function pack(
       strategy,
     };
   }
+
   const margin = Math.max(0, params.margin);
   const gap = Math.max(0, params.kerf) + Math.max(0, params.spacing);
   const usableW = sheet.length - margin * 2;
@@ -129,6 +187,7 @@ function pack(
   const heuristic = heuristicFor(params.mode);
   const guillotine = strategy === "guillotine" ? new GuillotineBin(usableW, usableH) : null;
   const maxrects = strategy === "maxrects" ? new MaxRectsBin(usableW, usableH) : null;
+
   for (const inst of ordered) {
     const allowRotate = canRotatePart(inst.part, params);
     const placed =
@@ -150,6 +209,7 @@ function pack(
       rotated: placed.rotated,
     });
   }
+
   const cuts =
     strategy === "guillotine"
       ? guillotine!.cuts.map((c, i) => ({
@@ -163,17 +223,22 @@ function pack(
   return { placements, remaining, cuts, strategy };
 }
 
-function choosePacked(instances: Instance[], sheet: Sheet, params: CutParameters): Packed {
+function choosePacked(
+  instances: Instance[],
+  sheet: Sheet,
+  params: CutParameters,
+  deadline?: number,
+  onProgress?: (snapshot: AltendorfProgress) => void,
+): Packed {
   const strategy: Strategy = params.sawMode === "altendorf-f40" ? "altendorf-f40" : "guillotine";
-
-  // O motor F40 já faz multi-start/adaptive search durante o seu orçamento total de pesquisa.
-  // Reexecutá-lo 10 vezes aqui só multiplicava o tempo sem melhorar a solução de forma garantida.
   if (strategy === "altendorf-f40") {
-    return pack(instances, sheet, params, strategy, 0);
+    return pack(instances, sheet, params, strategy, 0, deadline, onProgress);
   }
 
   const candidates: Packed[] = [];
-  for (let v = 0; v < 10; v++) candidates.push(pack(instances, sheet, params, strategy, v));
+  for (let v = 0; v < 10; v++) {
+    candidates.push(pack(instances, sheet, params, strategy, v));
+  }
   candidates.sort((a, b) => {
     if (b.placements.length !== a.placements.length)
       return b.placements.length - a.placements.length;
@@ -187,15 +252,31 @@ function choosePacked(instances: Instance[], sheet: Sheet, params: CutParameters
   return candidates[0]!;
 }
 
+function canFitAny(instances: Instance[], available: { sheet: Sheet }[], params: CutParameters): boolean {
+  return instances.some((inst) =>
+    available.some(({ sheet }) => {
+      const uw = sheet.length - 2 * Math.max(0, params.margin);
+      const uh = sheet.width - 2 * Math.max(0, params.margin);
+      const direct = inst.part.length <= uw && inst.part.width <= uh;
+      const rotated =
+        canRotatePart(inst.part, params) && inst.part.width <= uw && inst.part.length <= uh;
+      return direct || rotated;
+    }),
+  );
+}
+
 export function optimize(
   sheets: Sheet[],
   parts: Part[],
   params: CutParameters,
   offcutStock: OffcutStock[] = [],
+  onProgress?: (snapshot: OptimizationProgressSnapshot) => void,
 ): OptimizationResult {
   const errors = validateInputs(sheets, parts, params, offcutStock);
   if (errors.length) throw new Error(errors[0]);
 
+  const started = Date.now();
+  const jobDeadline = started + PRODUCTION_SEARCH_MS;
   const layouts: SheetLayout[] = [];
   const unplacedMap = new Map<string, UnplacedPart>();
   const materials = Array.from(
@@ -220,6 +301,24 @@ export function optimize(
         reason,
       });
   };
+
+  const emit = (force = false) => {
+    if (!onProgress) return;
+    const elapsedMs = Math.max(0, Date.now() - started);
+    const progress = Math.min(99, Math.round((elapsedMs / PRODUCTION_SEARCH_MS) * 100));
+    const placed = layouts.reduce((sum, l) => sum + l.placements.length, 0);
+    if (force || progress % 1 === 0) {
+      onProgress({
+        progress,
+        elapsedMs,
+        placed,
+        total: parts.reduce((s, p) => s + p.quantity, 0),
+        layouts: layouts.slice(),
+      });
+    }
+  };
+
+  emit(true);
 
   for (const material of materials) {
     const materialParts = parts.filter(
@@ -259,9 +358,8 @@ export function optimize(
       left: s.quantity,
       isOffcut: false,
     }));
-
-    // Sobras têm prioridade real: só abrimos uma chapa comprada quando nenhuma sobra disponível consegue receber peças.
     const stock = [...offcutSheets, ...purchasedSheets];
+
     if (!stock.length) {
       instances.forEach((i) => addUnplaced(i.part, "Sem chapa deste material"));
       continue;
@@ -274,33 +372,77 @@ export function optimize(
         break;
       }
 
+      const now = Date.now();
+      if (now >= jobDeadline) {
+        // A pesquisa profunda acabou. Em vez de abandonar peças possíveis, usa-se uma
+        // heurística guilhotina rápida para esvaziar o stock restante.
+        let fallbackProgress = true;
+        while (instances.length && fallbackProgress) {
+          fallbackProgress = false;
+          const fallbackSlots = stock.filter((s) => s.left > 0);
+          for (const slot of fallbackSlots) {
+            const packed = pack(instances, slot.sheet, params, "guillotine", 0);
+            if (!packed.placements.length) continue;
+            fallbackProgress = true;
+            slot.left -= 1;
+            const sheet = slot.sheet;
+            sheetCounter += 1;
+            if (!slot.isOffcut) totalCost += sheet.price;
+            totalCuts += packed.cuts.length;
+            totalCutLength += packed.cuts.reduce((sum, c) => sum + Math.abs(c.to - c.from), 0);
+            const layout = placementsToLayout(sheet, packed.placements, packed.cuts, sheetCounter, params);
+            layout.cutMethod = "guillotine";
+            layouts.push(layout);
+            instances = packed.remaining;
+            emit(true);
+            if (!instances.length) break;
+          }
+        }
+        if (instances.length) {
+          for (const inst of instances) {
+            addUnplaced(
+              inst.part,
+              canFitAny(instances, available, params)
+                ? "Tempo de otimização esgotado"
+                : "Peça maior do que a chapa",
+            );
+          }
+          break;
+        }
+        break;
+      }
+
       const offcutAvailable = available.filter((s) => s.isOffcut);
       const purchasedAvailable = available.filter((s) => !s.isOffcut);
-      const evaluate = (slots: typeof available) =>
-        slots.map((slot) => ({ slot, packed: choosePacked(instances, slot.sheet, params) }));
-      const offcutCandidates = evaluate(offcutAvailable);
-      const usableOffcutCandidates = offcutCandidates.filter((c) => c.packed.placements.length > 0);
-      const purchasedCandidates = evaluate(purchasedAvailable);
-      const usablePurchasedCandidates = purchasedCandidates.filter(
+      const evaluateSlots = (slots: typeof available) =>
+        slots.map((slot) => {
+          const remainingBudget = Math.max(20, jobDeadline - Date.now());
+          const probeWindow = Math.min(PROBE_SEARCH_MS, Math.max(50, Math.floor(remainingBudget / Math.max(1, slots.length))));
+          const probeDeadline = Date.now() + probeWindow;
+          return {
+            slot,
+            packed: choosePacked(instances, slot.sheet, params, probeDeadline),
+          };
+        });
+
+      const candidates = [...evaluateSlots(offcutAvailable), ...evaluateSlots(purchasedAvailable)].filter(
         (c) => c.packed.placements.length > 0,
       );
-      const candidates = usableOffcutCandidates.length
-        ? usableOffcutCandidates
-        : usablePurchasedCandidates;
 
       if (!candidates.length) {
         for (const inst of instances) {
-          const canFitAny = available.some(({ sheet }) => {
-            const uw = sheet.length - 2 * Math.max(0, params.margin);
-            const uh = sheet.width - 2 * Math.max(0, params.margin);
-            const direct = inst.part.length <= uw && inst.part.width <= uh;
-            const rotated =
-              canRotatePart(inst.part, params) && inst.part.width <= uw && inst.part.length <= uh;
-            return direct || rotated;
-          });
           addUnplaced(
             inst.part,
-            canFitAny ? "Não coube nas chapas disponíveis" : "Peça maior do que a chapa",
+            available.some(({ sheet }) => {
+              const uw = sheet.length - 2 * Math.max(0, params.margin);
+              const uh = sheet.width - 2 * Math.max(0, params.margin);
+              return (
+                (inst.part.length <= uw && inst.part.width <= uh) ||
+                (canRotatePart(inst.part, params) && inst.part.width <= uw && inst.part.length <= uh)
+              );
+            })
+              ? "Não coube nas chapas disponíveis"
+              : "Peça maior do que a chapa",
           );
         }
         break;
@@ -311,54 +453,77 @@ export function optimize(
           return b.packed.placements.length - a.packed.placements.length;
         const au = a.packed.placements.reduce((s, p) => s + p.w * p.h, 0);
         const bu = b.packed.placements.reduce((s, p) => s + p.w * p.h, 0);
-        return bu - au;
+        if (bu !== au) return bu - au;
+        if (a.slot.isOffcut !== b.slot.isOffcut) return a.slot.isOffcut ? -1 : 1;
+        return a.slot.sheet.price - b.slot.sheet.price;
       });
+
       const chosen = candidates[0]!;
       const slot = chosen.slot;
+      const finalDeadline = Math.max(Date.now() + 1, jobDeadline);
+      const remainingBudget = jobDeadline - Date.now();
+      const finalPacked =
+        params.sawMode === "altendorf-f40"
+          ? choosePacked(
+              instances,
+              slot.sheet,
+              params,
+              finalDeadline,
+              (snapshot) => {
+                const preview = placementsToLayout(
+                  slot.sheet,
+                  snapshot.strips.flatMap((strip) =>
+                    strip.items.map((item) => ({
+                      partId: item.instance.part.id,
+                      instance: item.instance.instance,
+                      name: item.instance.part.name,
+                      x: params.margin + item.x,
+                      y: params.margin + strip.y,
+                      w: item.w,
+                      h: item.h,
+                      rotated: item.rotated,
+                    })),
+                  ),
+                  [],
+                  sheetCounter + 1,
+                  params,
+                );
+                preview.cutMethod = "altendorf-f40";
+                onProgress?.({
+                  progress: Math.min(99, Math.round(((Date.now() - started) / PRODUCTION_SEARCH_MS) * 100)),
+                  elapsedMs: Date.now() - started,
+                  placed: layouts.reduce((s, l) => s + l.placements.length, 0) + snapshot.placedCount,
+                  total: parts.reduce((s, p) => s + p.quantity, 0),
+                  layouts: [...layouts, preview],
+                });
+              },
+            )
+          : chosen.packed;
+
+      if (!finalPacked.placements.length) {
+        for (const inst of instances)
+          addUnplaced(inst.part, "Não coube nas chapas disponíveis");
+        break;
+      }
+
       slot.left -= 1;
       const sheet = slot.sheet;
       sheetCounter += 1;
       if (!slot.isOffcut) totalCost += sheet.price;
-      totalCuts += chosen.packed.cuts.length;
-      const cutLength = chosen.packed.cuts.reduce((sum, c) => sum + Math.abs(c.to - c.from), 0);
-      totalCutLength += cutLength;
-      const gap = Math.max(0, params.kerf) + Math.max(0, params.spacing);
-      const freeRects: Rect[] = deriveFreeRects(
-        sheet.length - 2 * Math.max(0, params.margin),
-        sheet.width - 2 * Math.max(0, params.margin),
-        chosen.packed.placements.map((p) => ({
-          ...p,
-          x: p.x - params.margin,
-          y: p.y - params.margin,
-        })),
-        gap,
-      ).map((r) => ({ ...r, x: r.x + params.margin, y: r.y + params.margin }));
-      const offcuts = freeRects.filter((r) => r.w >= 80 && r.h >= 80);
-      const usedArea = chosen.packed.placements.reduce((sum, p) => sum + p.w * p.h, 0);
-      const sheetArea = sheet.length * sheet.width;
-      layouts.push({
-        sheetId: sheet.id,
-        sheetName: sheet.name,
-        material: sheet.material,
-        index: sheetCounter,
-        length: sheet.length,
-        width: sheet.width,
-        thickness: sheet.thickness,
-        placements: chosen.packed.placements,
-        offcuts,
-        usedArea,
-        sheetArea,
-        usagePct: sheetArea ? (usedArea / sheetArea) * 100 : 0,
-        cuts: chosen.packed.cuts,
-        cutMethod:
-          chosen.packed.strategy === "altendorf-f40"
-            ? "altendorf-f40"
-            : chosen.packed.strategy === "guillotine"
-              ? "guillotine"
-              : "heuristic",
-        manual: false,
-      });
-      instances = chosen.packed.remaining;
+      totalCuts += finalPacked.cuts.length;
+      totalCutLength += finalPacked.cuts.reduce((sum, c) => sum + Math.abs(c.to - c.from), 0);
+      const layout = placementsToLayout(sheet, finalPacked.placements, finalPacked.cuts, sheetCounter, params);
+      layout.cutMethod =
+        finalPacked.strategy === "altendorf-f40"
+          ? "altendorf-f40"
+          : finalPacked.strategy === "guillotine"
+            ? "guillotine"
+            : "heuristic";
+      layouts.push(layout);
+      instances = finalPacked.remaining;
+      emit(true);
+
+      if (remainingBudget <= 0 && instances.length) continue;
     }
   }
 
@@ -384,7 +549,7 @@ export function optimize(
     avgSheetUnitCost *
     (Math.max(0, Math.min(100, params.offcutCreditPct)) / 100);
   const cuttingCost = (totalCutLength / 1000) * Math.max(0, params.sheetCostPerCut);
-  return {
+  const result: OptimizationResult = {
     layouts,
     unplaced: Array.from(unplacedMap.values()),
     stats: {
@@ -405,4 +570,12 @@ export function optimize(
     },
     createdAt: new Date().toISOString(),
   };
+  onProgress?.({
+    progress: 100,
+    elapsedMs: Date.now() - started,
+    placed: partsPlaced,
+    total: partsTotal,
+    layouts: layouts.slice(),
+  });
+  return result;
 }
