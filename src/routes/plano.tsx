@@ -4,6 +4,7 @@ import { ArrowRight, Check, Download, FileCode2, Move, Printer } from "lucide-re
 import { useProject } from "@/hooks/useProject";
 import { EmptyState, PageHeader, Panel, Stat, btn, btnPrimary } from "@/components/ui-bits";
 import { SheetPlanView } from "@/components/SheetPlanView";
+import { exportSheetDrawingPdf } from "@/lib/pdf/drawing";
 import { m2, num, pct } from "@/lib/format";
 import { colorForPart } from "@/lib/plan-colors";
 import { cn } from "@/lib/utils";
@@ -148,6 +149,13 @@ function PlanPage() {
             </button>
             <button className={btn} onClick={() => downloadCutList(project, result)}>
               <Download className="h-4 w-4" /> Lista CSV
+            </button>
+            <button
+              className={btn}
+              onClick={() => exportSheetDrawingPdf(project, result, true)}
+              title="Exportar um desenho A4 por cada chapa, com projeto, cliente, data e material"
+            >
+              <Download className="h-4 w-4" /> PDF · Desenhos das chapas
             </button>
             <button className={btn} onClick={() => window.print()}>
               <Printer className="h-4 w-4" /> Imprimir
