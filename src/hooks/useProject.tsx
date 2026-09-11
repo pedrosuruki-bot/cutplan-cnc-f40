@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { CutParameters, OptimizationResult, Part, Project, Sheet, Placement } from "@/types";
+import type { CutParameters, OptimizationResult, Part, Project, Sheet, Placement, SheetLayout } from "@/types";
 import { createDemoProject, createEmptyProject } from "@/lib/demo";
 import { projectRepository } from "@/lib/storage";
 import { deriveFreeRects } from "@/lib/optimizer/maxrects";
@@ -19,6 +19,10 @@ interface ProjectContextValue {
   stale: boolean;
   optimizing: boolean;
   optimizationProgress: number;
+  optimizationElapsedMs: number;
+  optimizationPlaced: number;
+  optimizationTotal: number;
+  optimizationLayouts: SheetLayout[];
   hydrated: boolean;
   hasSaved: boolean;
   setProject: (updater: (p: Project) => Project) => void;
@@ -41,9 +45,11 @@ interface ProjectContextValue {
   ) => boolean;
 }
 const ProjectContext = createContext<ProjectContextValue | null>(null);
+
 function keyOf(p: Placement): string {
   return `${p.partId}:${p.instance}`;
 }
+
 function overlaps(a: Placement, b: Placement, gap: number): boolean {
   const buffer = Math.max(0, gap) / 2;
   const ax = a.x - buffer,
@@ -52,6 +58,7 @@ function overlaps(a: Placement, b: Placement, gap: number): boolean {
     ah = a.h + buffer * 2;
   return ax < b.x + b.w && ax + aw > b.x && ay < b.y + b.h && ay + ah > b.y;
 }
+
 function sheetsForCost(project: Project): number {
   const sheets = project.sheets;
   return sheets.length
@@ -65,7 +72,7 @@ function sheetsForCost(project: Project): number {
 
 function runOptimizerWorker(
   project: Project,
-  onProgress: (progress: number) => void,
+  onProgress: (progress: number, layouts: SheetLayout[], elapsedMs: number, placed: number, total: number) => void,
 ): Promise<OptimizationResult> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../workers/optimizer.worker.ts", import.meta.url), {
@@ -76,12 +83,12 @@ function runOptimizerWorker(
     let lastProgress = 5;
     const timer = window.setInterval(() => {
       const elapsed = performance.now() - started;
-      const progress = Math.min(95, Math.max(lastProgress, Math.round((elapsed / 60000) * 95)));
+      const progress = Math.min(99, Math.max(lastProgress, Math.round((elapsed / 60000) * 99)));
       if (progress > lastProgress) {
         lastProgress = progress;
-        onProgress(progress);
+        onProgress(progress, [], Math.round(elapsed), 0, project.parts.reduce((s, p) => s + p.quantity, 0));
       }
-    }, 120);
+    }, 200);
 
     const cleanup = () => {
       window.clearInterval(timer);
@@ -90,15 +97,21 @@ function runOptimizerWorker(
 
     worker.onmessage = (event: MessageEvent) => {
       const message = event.data as
+        | { id: number; type: "progress"; progress: number; layouts: SheetLayout[]; elapsedMs: number; placed: number; total: number }
         | { id: number; type: "done"; result: OptimizationResult }
         | { id: number; type: "error"; message: string };
       if (message.id !== requestId) return;
+      if (message.type === "progress") {
+        lastProgress = Math.max(lastProgress, Math.min(99, Math.round(message.progress)));
+        onProgress(lastProgress, message.layouts, message.elapsedMs, message.placed, message.total);
+        return;
+      }
       cleanup();
       if (message.type === "error") {
         reject(new Error(message.message));
         return;
       }
-      onProgress(100);
+      onProgress(100, message.result.layouts, Math.round(performance.now() - started), message.result.stats.partsPlaced, message.result.stats.partsTotal);
       resolve(message.result);
     };
     worker.onerror = () => {
@@ -106,7 +119,7 @@ function runOptimizerWorker(
       reject(new Error("Não foi possível iniciar o motor de otimização."));
     };
 
-    onProgress(5);
+    onProgress(5, [], 0, 0, project.parts.reduce((s, p) => s + p.quantity, 0));
     worker.postMessage({
       id: requestId,
       sheets: project.sheets,
@@ -123,8 +136,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [stale, setStale] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizationProgress, setOptimizationProgress] = useState(0);
+  const [optimizationElapsedMs, setOptimizationElapsedMs] = useState(0);
+  const [optimizationPlaced, setOptimizationPlaced] = useState(0);
+  const [optimizationTotal, setOptimizationTotal] = useState(0);
+  const [optimizationLayouts, setOptimizationLayouts] = useState<SheetLayout[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
+
   useEffect(() => {
     void projectRepository
       .loadPersistent()
@@ -138,6 +156,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => setHydrated(true));
   }, []);
+
   const setProject = useCallback(
     (updater: (p: Project) => Project) => {
       setProjectState((prev) => {
@@ -149,6 +168,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     },
     [result],
   );
+
   const value = useMemo<ProjectContextValue>(
     () => ({
       project,
@@ -156,6 +176,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       stale,
       optimizing,
       optimizationProgress,
+      optimizationElapsedMs,
+      optimizationPlaced,
+      optimizationTotal,
+      optimizationLayouts,
       hydrated,
       hasSaved,
       setProject,
@@ -207,10 +231,21 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       runOptimize: async () => {
         setOptimizing(true);
         setOptimizationProgress(0);
+        setOptimizationElapsedMs(0);
+        setOptimizationPlaced(0);
+        setOptimizationTotal(project.parts.reduce((s, p) => s + p.quantity, 0));
+        setOptimizationLayouts([]);
         await new Promise((r) => setTimeout(r, 20));
         try {
-          const res = await runOptimizerWorker(project, setOptimizationProgress);
+          const res = await runOptimizerWorker(project, (progress, layouts, elapsedMs, placed, total) => {
+            setOptimizationProgress(progress);
+            setOptimizationElapsedMs(elapsedMs);
+            setOptimizationPlaced(placed);
+            setOptimizationTotal(total);
+            if (layouts.length) setOptimizationLayouts(layouts);
+          });
           setResult(res);
+          setOptimizationLayouts(res.layouts);
           setStale(false);
           projectRepository.saveResult(project, res);
           setHasSaved(true);
@@ -218,6 +253,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         } finally {
           setOptimizing(false);
           setOptimizationProgress(0);
+          setOptimizationElapsedMs(0);
+          setOptimizationPlaced(0);
+          setOptimizationTotal(0);
+          setOptimizationLayouts([]);
         }
       },
       movePlacement: (layoutIndex, placementKey, x, y, rotated) => {
@@ -304,10 +343,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         return true;
       },
     }),
-    [project, result, stale, optimizing, optimizationProgress, hydrated, hasSaved, setProject],
+    [project, result, stale, optimizing, optimizationProgress, optimizationElapsedMs, optimizationPlaced, optimizationTotal, optimizationLayouts, hydrated, hasSaved, setProject],
   );
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
+
 export function useProject() {
   const ctx = useContext(ProjectContext);
   if (!ctx) throw new Error("useProject deve ser usado dentro de ProjectProvider");
