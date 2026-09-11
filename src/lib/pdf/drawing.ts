@@ -65,13 +65,7 @@ function drawPieceDimensions(
   });
 }
 
-function drawCheckerboard(
-  doc: jsPDF,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
+function drawCheckerboard(doc: jsPDF, x: number, y: number, w: number, h: number): void {
   const cell = 6;
   const rows = Math.ceil(h / cell);
   const cols = Math.ceil(w / cell);
@@ -82,21 +76,18 @@ function drawCheckerboard(
     for (let col = 0; col < cols; col += 1) {
       const cellX = x + col * cell;
       const cellW = Math.min(cell, x + w - cellX);
-      if ((row + col) % 2 === 0) {
-        doc.setFillColor(247, 247, 247);
-      } else {
-        doc.setFillColor(229, 229, 229);
-      }
+      if ((row + col) % 2 === 0) doc.setFillColor(247, 247, 247);
+      else doc.setFillColor(229, 229, 229);
       doc.rect(cellX, cellY, cellW, cellH, "F");
     }
   }
 }
 
-function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void {
+function drawSheet(doc: jsPDF, project: Project, layout: SheetLayout, showPartIds: boolean): void {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const marginX = 12;
-  const top = 27;
+  const top = 34;
   const bottom = 25;
   const right = 18;
   const areaW = pageW - marginX * 2 - right;
@@ -120,16 +111,24 @@ function drawSheet(doc: jsPDF, layout: SheetLayout, showPartIds: boolean): void 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.text(`Chapa ${layout.index} — ${layout.material}`, marginX, 10);
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.text(
-    `Dimensão: ${layout.length} × ${layout.width} × ${layout.thickness} mm`,
+    `${project.name}${project.client ? ` · Cliente: ${project.client}` : ""}`,
     marginX,
     16,
   );
+  doc.setFontSize(8);
+  doc.text(`Data: ${project.date || "—"} · Material: ${layout.material}`, marginX, 21);
+  doc.text(
+    `Dimensão da chapa: ${layout.length} × ${layout.width} × ${layout.thickness} mm`,
+    marginX,
+    26,
+  );
   doc.setFontSize(7);
   doc.setTextColor(90, 90, 90);
-  doc.text("Desenho de corte · medidas das peças em mm", marginX, 21);
+  doc.text("Desenho de corte · medidas das peças em mm", marginX, 30);
 
   doc.setFillColor(248, 248, 248);
   doc.setDrawColor(70, 70, 70);
@@ -223,7 +222,7 @@ export function exportSheetDrawingPdf(
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   result.layouts.forEach((layout, index) => {
     if (index > 0) doc.addPage("a4", "portrait");
-    drawSheet(doc, layout, showPartIds);
+    drawSheet(doc, project, layout, showPartIds);
   });
   doc.save(`${slug(project)}-desenho-chapas.pdf`);
 }
