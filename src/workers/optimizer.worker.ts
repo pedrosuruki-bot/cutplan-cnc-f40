@@ -1,4 +1,4 @@
-import { optimize } from "@/lib/optimizer";
+import { optimize, type OptimizationProgressSnapshot } from "@/lib/optimizer";
 import type { CutParameters, OffcutStock, Part, Sheet } from "@/types";
 
 interface OptimizeRequest {
@@ -12,7 +12,17 @@ interface OptimizeRequest {
 self.onmessage = (event: MessageEvent<OptimizeRequest>) => {
   const { id, sheets, parts, parameters, offcutStock } = event.data;
   try {
-    const result = optimize(sheets, parts, parameters, offcutStock);
+    const result = optimize(sheets, parts, parameters, offcutStock, (snapshot: OptimizationProgressSnapshot) => {
+      self.postMessage({
+        id,
+        type: "progress",
+        progress: snapshot.progress,
+        elapsedMs: snapshot.elapsedMs,
+        placed: snapshot.placed,
+        total: snapshot.total,
+        layouts: snapshot.layouts,
+      });
+    });
     self.postMessage({ id, type: "done", result });
   } catch (error) {
     self.postMessage({
